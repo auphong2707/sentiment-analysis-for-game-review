@@ -28,15 +28,53 @@ import csv
 class GameScraper:
     """Scrapes reviews for multiple games"""
     
-    def __init__(self, max_reviews=None, delay=5, skip_errors=True):
+    def __init__(self, max_reviews=None, delay=5, skip_errors=True, skip_existing=True):
         self.max_reviews = max_reviews
         self.delay = delay
         self.skip_errors = skip_errors
+        self.skip_existing = skip_existing
         self.results = {
             'success': [],
             'failed': [],
             'skipped': []
         }
+        self.progress_file = Path('data/scraping_progress.json')
+        self.scraped_games = self._load_progress()
+    
+    def _load_progress(self):
+        """Load previously scraped games from progress file"""
+        if self.progress_file.exists():
+            try:
+                with open(self.progress_file, 'r', encoding='utf-8') as f:
+                    progress = json.load(f)
+                    scraped = set()
+                    for game in progress.get('success', []):
+                        key = f"{game['game']}|{game['platform']}"
+                        scraped.add(key)
+                    return scraped
+            except Exception as e:
+                print(f"⚠ Could not load progress file: {e}")
+                return set()
+        return set()
+    
+    def _save_progress(self):
+        """Save current progress to file"""
+        try:
+            self.progress_file.parent.mkdir(parents=True, exist_ok=True)
+            with open(self.progress_file, 'w', encoding='utf-8') as f:
+                json.dump(self.results, f, indent=2, ensure_ascii=False)
+        except Exception as e:
+            print(f"⚠ Could not save progress: {e}")
+    
+    def _is_already_scraped(self, game_name, platform):
+        """Check if game was already scraped"""
+        key = f"{game_name}|{platform}"
+        return key in self.scraped_games
+    
+    def _mark_as_scraped(self, game_name, platform):
+        """Mark game as scraped"""
+        key = f"{game_name}|{platform}"
+        self.scraped_games.add(key)
     
     def load_games_from_txt(self, filepath):
         """
@@ -131,21 +169,37 @@ class GameScraper:
     def scrape_game(self, game_name, platform, game_num, total_games):
         """Scrape reviews for a single game"""
         
+        # Check if already scraped
+        if self.skip_existing and self._is_already_scraped(game_name, platform):
+            print(f"\n[{game_num}/{total_games}] ⏭️  Skipping {game_name} ({platform}) - Already scraped")
+            self.results['skipped'].append({
+                'game': game_name,
+                'platform': platform,
+                'reason': 'already_scraped',
+                'timestamp': datetime.now().isoformat()
+            })
+            return True
+        
         print("\n" + "=" * 70)
         print(f"[{game_num}/{total_games}] Scraping: {game_name} ({platform})")
         print("=" * 70)
         
-        # Build scrapy command
+        # Build scrapy command with custom output file
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        output_file = f"data/{game_name}_{platform}_{timestamp}.json"
+        
         command = [
             "scrapy", "crawl", "metacritic_reviews",
             "-a", f"game_name={game_name}",
-            "-a", f"platform={platform}"
+            "-a", f"platform={platform}",
+            "-o", output_file  # Output to specific file immediately
         ]
         
         if self.max_reviews:
             command.extend(["-a", f"max_reviews={self.max_reviews}"])
         
         print(f"Command: {' '.join(command)}")
+        print(f"Output: {output_file}")
         print()
         
         try:
@@ -159,11 +213,15 @@ class GameScraper:
             
             if result.returncode == 0:
                 print(f"✓ Successfully scraped: {game_name} ({platform})")
+                print(f"✓ Saved to: {output_file}")
                 self.results['success'].append({
                     'game': game_name,
                     'platform': platform,
+                    'output_file': output_file,
                     'timestamp': datetime.now().isoformat()
                 })
+                self._mark_as_scraped(game_name, platform)
+                self._save_progress()  # Save progress after each successful scrape
                 return True
             else:
                 print(f"✗ Failed to scrape: {game_name} ({platform})")
@@ -174,6 +232,7 @@ class GameScraper:
                     'error': result.stderr[:200],
                     'timestamp': datetime.now().isoformat()
                 })
+                self._save_progress()  # Save progress even on failure
                 return False
                 
         except subprocess.TimeoutExpired:
@@ -184,6 +243,7 @@ class GameScraper:
                 'error': 'Timeout',
                 'timestamp': datetime.now().isoformat()
             })
+            self._save_progress()
             return False
             
         except Exception as e:
@@ -194,6 +254,7 @@ class GameScraper:
                 'error': str(e),
                 'timestamp': datetime.now().isoformat()
             })
+            self._save_progress()
             return False
     
     def scrape_all(self, games):
@@ -206,12 +267,23 @@ class GameScraper:
         total_games = len(games)
         start_time = datetime.now()
         
+        # Check how many already scraped
+        already_scraped = sum(1 for g in games 
+                             if self._is_already_scraped(
+                                 g.get('game_name_slug', g.get('game_name', '')),
+                                 g.get('platform_slug', g.get('platform', ''))
+                             ))
+        
         print("\n" + "=" * 70)
         print("STARTING BULK SCRAPING")
         print("=" * 70)
         print(f"Total games: {total_games}")
+        print(f"Already scraped: {already_scraped}")
+        print(f"Remaining: {total_games - already_scraped}")
         print(f"Max reviews per game: {self.max_reviews or 'unlimited'}")
         print(f"Delay between games: {self.delay}s")
+        print(f"Skip existing: {'Yes' if self.skip_existing else 'No'}")
+        print(f"Progress file: {self.progress_file}")
         print("=" * 70)
         
         for i, game in enumerate(games, 1):
@@ -274,22 +346,30 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Scrape all games from discovered list
-  python scrape_all_games.py --input data/discovered_games.txt
-  
-  # Scrape with review limit per game
-  python scrape_all_games.py --input data/discovered_games.json --max-reviews 100
-  
-  # Continue on errors
+  # Scrape all games from discovered list (auto-skips already scraped)
   python scrape_all_games.py --input data/discovered_games.txt --skip-errors
   
+  # Scrape with review limit per game
+  python scrape_all_games.py --input data/discovered_games.json --max-reviews 100 --skip-errors
+  
+  # Force re-scrape everything (ignore progress)
+  python scrape_all_games.py --input data/discovered_games.txt --force-rescrape --skip-errors
+  
   # Custom delay between games
-  python scrape_all_games.py --input data/discovered_games.txt --delay 10
+  python scrape_all_games.py --input data/discovered_games.txt --delay 10 --skip-errors
+
+Features:
+  - Incremental scraping: Each game saves immediately after scraping
+  - Auto-resume: Skips games that were already scraped
+  - Progress tracking: Saves progress to data/scraping_progress.json
+  - Individual outputs: Each game gets its own JSON file
 
 Workflow:
   1. Run discover_games.py to find games
   2. Run this script to scrape all discovered games
-  3. Check data/ folder for results
+  3. Script automatically saves after each game
+  4. If interrupted, just run again - it will skip completed games
+  5. Use combine_data.py to merge all files when done
         """
     )
     
@@ -301,6 +381,10 @@ Workflow:
                       help='Delay between games in seconds (default: 5.0)')
     parser.add_argument('--skip-errors', action='store_true',
                       help='Continue scraping even if a game fails')
+    parser.add_argument('--skip-existing', action='store_true', default=True,
+                      help='Skip games that were already scraped (default: True)')
+    parser.add_argument('--force-rescrape', action='store_true',
+                      help='Force re-scrape all games (ignore progress file)')
     parser.add_argument('--start-from', type=int, default=1,
                       help='Start from game number N (for resuming)')
     
@@ -310,7 +394,8 @@ Workflow:
     scraper = GameScraper(
         max_reviews=args.max_reviews,
         delay=args.delay,
-        skip_errors=args.skip_errors
+        skip_errors=args.skip_errors,
+        skip_existing=not args.force_rescrape  # If force rescrape, don't skip existing
     )
     
     # Load games

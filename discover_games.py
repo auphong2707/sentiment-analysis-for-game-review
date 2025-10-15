@@ -18,16 +18,18 @@ import csv
 import argparse
 from datetime import datetime
 from urllib.parse import urljoin, urlparse, parse_qs
+from pathlib import Path
 import random
 
 
 class GameDiscoverer:
     """Discovers games from Metacritic browse pages"""
     
-    def __init__(self, delay=3, max_pages=None):
+    def __init__(self, delay=3, max_pages=None, incremental=True):
         self.base_url = "https://www.metacritic.com"
         self.delay = delay
         self.max_pages = max_pages
+        self.incremental = incremental
         self.discovered_games = []
         self.session = requests.Session()
         self.session.headers.update({
@@ -38,8 +40,91 @@ class GameDiscoverer:
             'Connection': 'keep-alive',
             'Upgrade-Insecure-Requests': '1',
         })
+        self.output_file = None
+        self.discovered_count = 0
     
-    def discover_from_browse(self, platform=None, min_score=None, sort='score'):
+    def _initialize_output_file(self, output_format='txt', filename=None):
+        """Initialize the output file for incremental saving"""
+        if not filename:
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            filename = f"discovered_games_{timestamp}.{output_format}"
+        
+        self.output_file = Path(f"data/{filename}")
+        self.output_file.parent.mkdir(parents=True, exist_ok=True)
+        
+        # For JSON, start with an array
+        if output_format == 'json':
+            with open(self.output_file, 'w', encoding='utf-8') as f:
+                f.write('[\n')
+        
+        # For CSV, write headers
+        elif output_format == 'csv':
+            with open(self.output_file, 'w', newline='', encoding='utf-8') as f:
+                writer = csv.writer(f)
+                writer.writerow(['title', 'game_name_slug', 'platform', 'platform_slug', 
+                               'url', 'metascore', 'release_date', 'discovered_at'])
+        
+        return self.output_file
+    
+    def _append_game_to_file(self, game_data, output_format='txt'):
+        """Append a single game to the output file immediately"""
+        if not self.output_file:
+            return
+        
+        try:
+            if output_format == 'txt':
+                with open(self.output_file, 'a', encoding='utf-8') as f:
+                    f.write(f"{game_data['game_name_slug']}|{game_data['platform_slug']}\n")
+            
+            elif output_format == 'json':
+                with open(self.output_file, 'r+', encoding='utf-8') as f:
+                    # Move to end, overwrite the last closing bracket
+                    f.seek(0, 2)  # Go to end
+                    pos = f.tell()
+                    
+                    # Add comma if not first entry
+                    if self.discovered_count > 0:
+                        f.seek(pos - 2)  # Move back before \n
+                        f.write(',\n')
+                    
+                    # Write the game data
+                    json_line = json.dumps(game_data, indent=2, ensure_ascii=False)
+                    # Indent the JSON properly
+                    json_line = '\n'.join('  ' + line for line in json_line.split('\n'))
+                    f.write(json_line + '\n')
+            
+            elif output_format == 'csv':
+                with open(self.output_file, 'a', newline='', encoding='utf-8') as f:
+                    writer = csv.writer(f)
+                    writer.writerow([
+                        game_data.get('title', ''),
+                        game_data.get('game_name_slug', ''),
+                        game_data.get('platform', ''),
+                        game_data.get('platform_slug', ''),
+                        game_data.get('url', ''),
+                        game_data.get('metascore', ''),
+                        game_data.get('release_date', ''),
+                        game_data.get('discovered_at', '')
+                    ])
+            
+            self.discovered_count += 1
+            
+        except Exception as e:
+            print(f"    ⚠ Error saving game to file: {e}")
+    
+    def _finalize_output_file(self, output_format='txt'):
+        """Finalize the output file (close JSON array, etc.)"""
+        if not self.output_file:
+            return
+        
+        try:
+            if output_format == 'json':
+                with open(self.output_file, 'a', encoding='utf-8') as f:
+                    f.write(']\n')
+        except Exception as e:
+            print(f"⚠ Error finalizing output file: {e}")
+    
+    def discover_from_browse(self, platform=None, min_score=None, sort='score', output_format='txt', filename=None):
         """
         Discover games from Metacritic browse pages
         
@@ -47,13 +132,21 @@ class GameDiscoverer:
             platform: Platform filter (e.g., 'playstation-5', 'pc', 'all')
             min_score: Minimum metascore filter (0-100)
             sort: Sort order ('score', 'date', 'name')
+            output_format: Output file format ('txt', 'json', 'csv')
+            filename: Custom filename (optional)
         """
+        # Initialize output file for incremental saving
+        if self.incremental:
+            output_file = self._initialize_output_file(output_format, filename)
+            print(f"Incremental output: {output_file}")
+        
         print("=" * 70)
         print("GAME DISCOVERY - Metacritic Browse")
         print("=" * 70)
         print(f"Platform: {platform or 'all'}")
         print(f"Min Score: {min_score or 'none'}")
         print(f"Max Pages: {self.max_pages or 'unlimited'}")
+        print(f"Incremental save: {'Yes' if self.incremental else 'No'}")
         print("=" * 70)
         print()
         
@@ -116,6 +209,10 @@ class GameDiscoverer:
                         page_games += 1
                         games_found += 1
                         
+                        # Save incrementally if enabled
+                        if self.incremental:
+                            self._append_game_to_file(game_data, output_format)
+                        
                         print(f"  [{games_found}] {game_data['title']} ({game_data['platform']}) - Score: {game_data.get('metascore', 'N/A')}")
                 
                 if page_games == 0 and page > 1:
@@ -142,8 +239,14 @@ class GameDiscoverer:
                 print(f"  ✗ Error processing page {page}: {e}")
                 break
         
+        # Finalize output file if incremental
+        if self.incremental:
+            self._finalize_output_file(output_format)
+        
         print("\n" + "=" * 70)
         print(f"DISCOVERY COMPLETE - Found {len(self.discovered_games)} games")
+        if self.incremental and self.output_file:
+            print(f"Saved to: {self.output_file}")
         print("=" * 70)
         
         return self.discovered_games
@@ -315,11 +418,17 @@ class GameDiscoverer:
             print("No games to save!")
             return
         
+        # If incremental saving was used, file is already saved
+        if self.incremental and self.output_file and self.output_file.exists():
+            print(f"\n✓ Games already saved incrementally to: {self.output_file}")
+            return self.output_file
+        
         if not filename:
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
             filename = f"discovered_games_{timestamp}.{output_format}"
         
-        filepath = f"data/{filename}"
+        filepath = Path(f"data/{filename}")
+        filepath.parent.mkdir(parents=True, exist_ok=True)
         
         try:
             if output_format == 'json':
@@ -384,8 +493,8 @@ Examples:
     
     args = parser.parse_args()
     
-    # Create discoverer
-    discoverer = GameDiscoverer(delay=args.delay, max_pages=args.max_pages)
+    # Create discoverer with incremental saving enabled by default
+    discoverer = GameDiscoverer(delay=args.delay, max_pages=args.max_pages, incremental=True)
     
     # Discover games
     if args.search:
@@ -393,10 +502,12 @@ Examples:
     else:
         discoverer.discover_from_browse(
             platform=args.platform if args.platform != 'all' else None,
-            min_score=args.min_score
+            min_score=args.min_score,
+            output_format=args.format,
+            filename=args.output
         )
     
-    # Save results
+    # Save results (will skip if already saved incrementally)
     if discoverer.discovered_games:
         discoverer.save_to_file(output_format=args.format, filename=args.output)
         
