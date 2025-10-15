@@ -80,8 +80,9 @@ DOWNLOADER_MIDDLEWARES = {
 ITEM_PIPELINES = {
     "metacritic_scraper.pipelines.MetacriticScraperPipeline": 100,
     "metacritic_scraper.pipelines.DuplicatesPipeline": 200,
-    "metacritic_scraper.pipelines.JsonExportPipeline": 300,  # JSON export (better for multi-line text)
-    # "metacritic_scraper.pipelines.CsvExportPipeline": 300,  # Disabled - use JSON instead
+    # Disabled: JsonExportPipeline creates timestamped files automatically
+    # We handle output explicitly with -o flag in scrape_all_games.py
+    # "metacritic_scraper.pipelines.JsonExportPipeline": 300,
 }
 
 # Enable and configure the AutoThrottle extension (disabled by default)
@@ -102,7 +103,8 @@ DNS_TIMEOUT = 30
 
 # Enable and configure HTTP caching (disabled by default)
 # See https://docs.scrapy.org/en/latest/topics/downloader-middleware.html#httpcache-middleware-settings
-HTTPCACHE_ENABLED = True
+# Disabled temporarily during Playwright testing - cache doesn't include page objects
+HTTPCACHE_ENABLED = False
 HTTPCACHE_EXPIRATION_SECS = 86400  # 24 hours
 HTTPCACHE_DIR = "httpcache"
 HTTPCACHE_IGNORE_HTTP_CODES = [500, 502, 503, 504, 400, 403, 404, 408]
@@ -115,3 +117,24 @@ RETRY_PRIORITY_ADJUST = -1
 
 # Logging
 LOG_LEVEL = 'INFO'
+
+# Disable default FEEDS to prevent creating timestamped JSON files
+# We only want output when explicitly specified with -o flag
+FEEDS = {}
+
+# Scrapy-Playwright settings for JavaScript rendering
+DOWNLOAD_HANDLERS = {
+    "http": "scrapy_playwright.handler.ScrapyPlaywrightDownloadHandler",
+    "https": "scrapy_playwright.handler.ScrapyPlaywrightDownloadHandler",
+}
+
+PLAYWRIGHT_LAUNCH_OPTIONS = {
+    "headless": True,  # Run in headless mode (no browser window)
+    "timeout": 120000,  # 120 seconds timeout
+}
+
+# Browser contexts
+PLAYWRIGHT_BROWSER_TYPE = "chromium"  # or "firefox" or "webkit"
+
+# Additional Playwright settings
+PLAYWRIGHT_DEFAULT_NAVIGATION_TIMEOUT = 120000  # 120 seconds

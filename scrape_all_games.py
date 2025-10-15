@@ -28,7 +28,7 @@ import csv
 class GameScraper:
     """Scrapes reviews for multiple games"""
     
-    def __init__(self, max_reviews=None, delay=5, skip_errors=True, skip_existing=True):
+    def __init__(self, max_reviews=None, delay=5, skip_errors=True, skip_existing=True, output_file=None):
         self.max_reviews = max_reviews
         self.delay = delay
         self.skip_errors = skip_errors
@@ -40,6 +40,23 @@ class GameScraper:
         }
         self.progress_file = Path('data/scraping_progress.json')
         self.scraped_games = self._load_progress()
+        
+        # Setup JSONL output file
+        if output_file:
+            self.output_file = Path(output_file)
+        else:
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            self.output_file = Path(f'data/all_reviews_{timestamp}.jsonl')
+        
+        # Create output file and parent directories
+        self.output_file.parent.mkdir(parents=True, exist_ok=True)
+        
+        # Initialize file if it doesn't exist (don't overwrite if resuming)
+        if not self.output_file.exists():
+            self.output_file.touch()
+            print(f"📝 Output file: {self.output_file}")
+        else:
+            print(f"📝 Appending to existing file: {self.output_file}")
     
     def _load_progress(self):
         """Load previously scraped games from progress file"""
@@ -76,6 +93,41 @@ class GameScraper:
         key = f"{game_name}|{platform}"
         self.scraped_games.add(key)
     
+    def _append_to_jsonl(self, temp_json_file):
+        """
+        Read JSON array from temp file and append each review as a line to JSONL
+        
+        Returns: Number of reviews appended
+        """
+        try:
+            temp_path = Path(temp_json_file)
+            if not temp_path.exists():
+                print(f"⚠ Warning: Temp file not found: {temp_json_file}")
+                return 0
+            
+            # Read the JSON array
+            with open(temp_path, 'r', encoding='utf-8') as f:
+                reviews = json.load(f)
+            
+            if not reviews:
+                print(f"⚠ Warning: No reviews found in {temp_json_file}")
+                return 0
+            
+            # Append each review as a JSON line
+            with open(self.output_file, 'a', encoding='utf-8') as f:
+                for review in reviews:
+                    json.dump(review, f, ensure_ascii=False)
+                    f.write('\n')
+            
+            return len(reviews)
+            
+        except json.JSONDecodeError as e:
+            print(f"⚠ Warning: Could not parse JSON from {temp_json_file}: {e}")
+            return 0
+        except Exception as e:
+            print(f"⚠ Warning: Error appending to JSONL: {e}")
+            return 0
+    
     def load_games_from_txt(self, filepath):
         """
         Load games from TXT file
@@ -90,14 +142,19 @@ class GameScraper:
                     if not line or line.startswith('#'):
                         continue
                     
-                    parts = line.split('|')
-                    if len(parts) >= 2:
+                    # Support both old format (game|platform) and new format (game only)
+                    if '|' in line:
+                        parts = line.split('|')
                         games.append({
                             'game_name_slug': parts[0].strip(),
-                            'platform_slug': parts[1].strip()
+                            'platform_slug': parts[1].strip() if len(parts) > 1 else 'multiplatform'
                         })
                     else:
-                        print(f"⚠ Skipping invalid line {line_num}: {line}")
+                        # New simplified format: just game name
+                        games.append({
+                            'game_name_slug': line,
+                            'platform_slug': 'multiplatform'
+                        })
             
             print(f"✓ Loaded {len(games)} games from {filepath}")
             return games
@@ -184,40 +241,57 @@ class GameScraper:
         print(f"[{game_num}/{total_games}] Scraping: {game_name} ({platform})")
         print("=" * 70)
         
-        # Build scrapy command with custom output file
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        output_file = f"data/{game_name}_{platform}_{timestamp}.json"
+        # Build scrapy command - output to temporary JSON file first
+        temp_output = f"data/temp_{game_name}_{platform}.json"
+        
+        # Use Python from virtual environment to ensure scrapy-playwright is available
+        python_exe = sys.executable  # This gets the current Python interpreter
         
         command = [
-            "scrapy", "crawl", "metacritic_reviews",
+            python_exe, "-m", "scrapy", "crawl", "metacritic_reviews",
             "-a", f"game_name={game_name}",
             "-a", f"platform={platform}",
-            "-o", output_file  # Output to specific file immediately
+            "-o", temp_output
         ]
         
         if self.max_reviews:
             command.extend(["-a", f"max_reviews={self.max_reviews}"])
         
         print(f"Command: {' '.join(command)}")
-        print(f"Output: {output_file}")
         print()
         
         try:
-            # Run scraper
+            # Run scraper (increased timeout for Playwright)
+            # Playwright takes longer: ~15-30 seconds per game for JavaScript rendering
+            timeout = 600  # 10 minute timeout (was 5 minutes)
+            if self.max_reviews:
+                # Estimate: ~0.5 seconds per review for loading + 30 seconds base
+                estimated_time = 30 + (self.max_reviews * 0.5)
+                timeout = max(600, int(estimated_time * 1.5))  # 1.5x buffer
+            
             result = subprocess.run(
                 command,
                 capture_output=True,
                 text=True,
-                timeout=300  # 5 minute timeout
+                timeout=timeout
             )
             
             if result.returncode == 0:
+                # Read temporary JSON file and append to JSONL
+                review_count = self._append_to_jsonl(temp_output)
+                
+                # Clean up temporary file
+                try:
+                    Path(temp_output).unlink()
+                except:
+                    pass
+                
                 print(f"✓ Successfully scraped: {game_name} ({platform})")
-                print(f"✓ Saved to: {output_file}")
+                print(f"✓ Appended {review_count} reviews to: {self.output_file}")
                 self.results['success'].append({
                     'game': game_name,
                     'platform': platform,
-                    'output_file': output_file,
+                    'review_count': review_count,
                     'timestamp': datetime.now().isoformat()
                 })
                 self._mark_as_scraped(game_name, platform)
@@ -312,6 +386,9 @@ class GameScraper:
         end_time = datetime.now()
         duration = (end_time - start_time).total_seconds()
         
+        # Count total reviews
+        total_reviews = sum(r.get('review_count', 0) for r in self.results['success'])
+        
         print("\n" + "=" * 70)
         print("SCRAPING COMPLETE")
         print("=" * 70)
@@ -319,6 +396,8 @@ class GameScraper:
         print(f"Successful: {len(self.results['success'])} games")
         print(f"Failed: {len(self.results['failed'])} games")
         print(f"Skipped: {len(self.results['skipped'])} games")
+        print(f"Total reviews: {total_reviews}")
+        print(f"Output file: {self.output_file}")
         print("=" * 70)
         
         # Save results log
@@ -346,11 +425,11 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Scrape all games from discovered list (auto-skips already scraped)
+  # Scrape all games to a single JSONL file (auto-skips already scraped)
   python scrape_all_games.py --input data/discovered_games.txt --skip-errors
   
-  # Scrape with review limit per game
-  python scrape_all_games.py --input data/discovered_games.json --max-reviews 100 --skip-errors
+  # Scrape with review limit per game to custom output file
+  python scrape_all_games.py --input data/discovered_games.txt --output data/reviews.jsonl --max-reviews 100 --skip-errors
   
   # Force re-scrape everything (ignore progress)
   python scrape_all_games.py --input data/discovered_games.txt --force-rescrape --skip-errors
@@ -359,26 +438,29 @@ Examples:
   python scrape_all_games.py --input data/discovered_games.txt --delay 10 --skip-errors
 
 Features:
-  - Incremental scraping: Each game saves immediately after scraping
+  - JSONL output: All reviews in one file, one JSON object per line
+  - Incremental scraping: Each game appends immediately after scraping
   - Auto-resume: Skips games that were already scraped
   - Progress tracking: Saves progress to data/scraping_progress.json
-  - Individual outputs: Each game gets its own JSON file
+  - Stream-friendly: JSONL format is easy to process line-by-line
 
 Workflow:
   1. Run discover_games.py to find games
-  2. Run this script to scrape all discovered games
-  3. Script automatically saves after each game
-  4. If interrupted, just run again - it will skip completed games
-  5. Use combine_data.py to merge all files when done
+  2. Run this script to scrape all discovered games into JSONL
+  3. Script automatically appends after each game
+  4. If interrupted, just run again - it will skip completed games and continue appending
+  5. Process JSONL directly (no need to combine files!)
         """
     )
     
     parser.add_argument('--input', '-i', type=str, required=True,
                       help='Input file with game list (txt, json, or csv)')
+    parser.add_argument('--output', '-o', type=str, default=None,
+                      help='Output JSONL file (default: data/all_reviews_TIMESTAMP.jsonl)')
     parser.add_argument('--max-reviews', type=int, default=None,
                       help='Maximum reviews per game (default: unlimited)')
-    parser.add_argument('--delay', type=float, default=5.0,
-                      help='Delay between games in seconds (default: 5.0)')
+    parser.add_argument('--delay', type=float, default=3.0,
+                      help='Delay between games in seconds (default: 3.0, Playwright handles rate limiting)')
     parser.add_argument('--skip-errors', action='store_true',
                       help='Continue scraping even if a game fails')
     parser.add_argument('--skip-existing', action='store_true', default=True,
@@ -395,7 +477,8 @@ Workflow:
         max_reviews=args.max_reviews,
         delay=args.delay,
         skip_errors=args.skip_errors,
-        skip_existing=not args.force_rescrape  # If force rescrape, don't skip existing
+        skip_existing=not args.force_rescrape,  # If force rescrape, don't skip existing
+        output_file=args.output if hasattr(args, 'output') else None
     )
     
     # Load games
@@ -410,16 +493,11 @@ Workflow:
         games = games[args.start_from - 1:]
         print(f"\nStarting from game #{args.start_from}")
     
-    # Confirm before starting
+    # Start scraping immediately
     print(f"\nReady to scrape {len(games)} games")
     print(f"Max reviews per game: {args.max_reviews or 'unlimited'}")
     print(f"Delay between games: {args.delay}s")
-    
-    response = input("\nProceed? (y/n): ").strip().lower()
-    
-    if response != 'y':
-        print("Cancelled.")
-        sys.exit(0)
+    print()
     
     # Start scraping
     try:

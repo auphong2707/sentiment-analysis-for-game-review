@@ -1,12 +1,15 @@
 """
-Metacritic Game Reviews Spider
+Metacritic Game Reviews Spider (with Playwright for JavaScript rendering)
 
 This spider scrapes user reviews from Metacritic for video games.
 It collects review text, scores, sentiment categories, and metadata.
 
+Uses Scrapy-Playwright to render JavaScript and load all reviews dynamically.
+
 Usage:
     scrapy crawl metacritic_reviews -a game_url="https://www.metacritic.com/game/pc/..."
     scrapy crawl metacritic_reviews -a game_name="the-last-of-us-part-ii" -a platform="playstation-4"
+    scrapy crawl metacritic_reviews -a game_name="the-last-of-us-part-ii" -a platform="playstation-4" -a max_reviews=100
 """
 
 import scrapy
@@ -49,10 +52,22 @@ class MetacriticReviewsSpider(scrapy.Spider):
         """Generate initial requests for game pages"""
         for url in self.start_urls:
             self.logger.info(f"Starting to scrape: {url}")
+            # Use Playwright for JavaScript rendering
             yield scrapy.Request(
                 url=url,
                 callback=self.parse_game_page,
-                errback=self.handle_error
+                errback=self.handle_error,
+                meta={
+                    "playwright": True,
+                    "playwright_include_page": True,
+                    "playwright_page_goto_kwargs": {
+                        "wait_until": "domcontentloaded",  # Wait until DOM is ready
+                        "timeout": 60000,  # 60 seconds timeout
+                    },
+                    "playwright_page_methods": [
+                        {"wait_for_timeout": 5000},  # Additional 5 second wait
+                    ],
+                }
             )
     
     def parse_game_page(self, response):
@@ -131,54 +146,127 @@ class MetacriticReviewsSpider(scrapy.Spider):
         # Metacritic structure: game page -> user-reviews section
         user_reviews_url = response.url.rstrip('/') + '/user-reviews'
         
+        # Use Playwright to load and scroll through reviews
         yield scrapy.Request(
             url=user_reviews_url,
             callback=self.parse_reviews_page,
-            errback=self.handle_error
+            errback=self.handle_error,
+            meta={
+                "playwright": True,
+                "playwright_include_page": True,
+                "playwright_page_goto_kwargs": {
+                    "wait_until": "domcontentloaded",  # Wait until DOM is ready
+                    "timeout": 60000,  # 60 seconds timeout
+                },
+                "playwright_page_methods": [
+                    {"wait_for_timeout": 5000},  # Additional 5 second wait
+                ],
+            }
         )
     
-    def parse_reviews_page(self, response):
-        """Parse a page of user reviews"""
+    async def parse_reviews_page(self, response):
+        """
+        Parse a page of user reviews with Playwright
+        
+        Uses Playwright to scroll and load all reviews dynamically
+        """
         
         self.logger.info(f"Parsing reviews page: {response.url}")
         
-        # Find all review containers (Metacritic uses different selectors over time)
-        reviews = response.css('div.review_content, div.c-siteReview')
+        # Get the Playwright page object
+        page = response.meta.get("playwright_page")
+        
+        if page:
+            try:
+                # Wait for reviews to load
+                await page.wait_for_selector('div.c-siteReview, div.review_content', timeout=10000)
+                self.logger.info("✓ Initial reviews loaded")
+                
+                # Scroll and load more reviews
+                previous_count = 0
+                scroll_attempts = 0
+                max_scroll_attempts = 50  # Prevent infinite loops
+                
+                while scroll_attempts < max_scroll_attempts:
+                    # Count current reviews
+                    current_reviews = await page.query_selector_all('div.c-siteReview, div.review_content')
+                    current_count = len(current_reviews)
+                    
+                    self.logger.info(f"📊 Currently loaded: {current_count} reviews")
+                    
+                    # Check if we've reached max_reviews limit
+                    if self.max_reviews and current_count >= self.max_reviews:
+                        self.logger.info(f"✓ Reached target: {self.max_reviews} reviews")
+                        break
+                    
+                    # Check if no new reviews loaded
+                    if current_count == previous_count:
+                        self.logger.info("✓ No more reviews to load")
+                        break
+                    
+                    previous_count = current_count
+                    
+                    # Scroll to bottom to trigger loading more reviews
+                    await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+                    await page.wait_for_timeout(2000)  # Wait for new reviews to load
+                    
+                    # Look for and click "Load More" button if exists
+                    try:
+                        load_more_button = await page.query_selector('button:has-text("Load More"), a:has-text("Load More"), button.load-more')
+                        if load_more_button:
+                            self.logger.info("🔄 Clicking 'Load More' button")
+                            await load_more_button.click()
+                            await page.wait_for_timeout(2000)
+                    except:
+                        pass  # No load more button, that's fine
+                    
+                    scroll_attempts += 1
+                
+                self.logger.info(f"✓ Finished loading reviews. Total: {previous_count}")
+                
+                # Get the final HTML content
+                content = await page.content()
+                
+                # Close the page
+                await page.close()
+                
+                # Parse the HTML with Scrapy selector
+                from scrapy.http import HtmlResponse
+                final_response = HtmlResponse(
+                    url=response.url,
+                    body=content.encode('utf-8'),
+                    encoding='utf-8'
+                )
+                
+            except Exception as e:
+                self.logger.error(f"Error during Playwright interaction: {e}")
+                if page:
+                    await page.close()
+                final_response = response
+        else:
+            final_response = response
+        
+        # Find all review containers
+        reviews = final_response.css('div.review_content, div.c-siteReview')
         
         if not reviews:
             self.logger.warning(f"No reviews found on page: {response.url}")
-            # Try alternative selectors
-            reviews = response.css('div.user_review')
+            reviews = final_response.css('div.user_review')
         
-        self.logger.info(f"Found {len(reviews)} reviews on this page")
+        self.logger.info(f"Found {len(reviews)} reviews to parse")
         
+        # Parse each review
         for review in reviews:
-            # Check if we've reached the max reviews limit
             if self.max_reviews and self.reviews_count >= self.max_reviews:
                 self.logger.info(f"Reached maximum reviews limit: {self.max_reviews}")
                 return
             
-            item = self.parse_single_review(review, response)
+            item = self.parse_single_review(review, final_response)
             if item:
                 self.reviews_count += 1
                 yield item
         
-        # Check for next page
-        if not self.max_reviews or self.reviews_count < self.max_reviews:
-            next_page = response.css('a.page_next::attr(href)').get() or \
-                       response.css('a.c-pagination_button--next::attr(href)').get() or \
-                       response.css('span.next a::attr(href)').get()
-            
-            if next_page:
-                next_page_url = urljoin(response.url, next_page)
-                self.logger.info(f"Following next page: {next_page_url}")
-                yield scrapy.Request(
-                    url=next_page_url,
-                    callback=self.parse_reviews_page,
-                    errback=self.handle_error
-                )
-            else:
-                self.logger.info("No more review pages found")
+        self.logger.info(f"✓ Scraping complete. Total reviews collected: {self.reviews_count}")
     
     def parse_single_review(self, review_selector, response):
         """Extract data from a single review"""

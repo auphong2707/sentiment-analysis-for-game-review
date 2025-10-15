@@ -1,5 +1,6 @@
 # Web Scraping
 scrapy>=2.11.0
+scrapy-playwright>=0.0.34
 selenium>=4.15.0
 webdriver-manager>=4.0.1
 beautifulsoup4>=4.12.0

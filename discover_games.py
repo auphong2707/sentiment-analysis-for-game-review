@@ -61,8 +61,7 @@ class GameDiscoverer:
         elif output_format == 'csv':
             with open(self.output_file, 'w', newline='', encoding='utf-8') as f:
                 writer = csv.writer(f)
-                writer.writerow(['title', 'game_name_slug', 'platform', 'platform_slug', 
-                               'url', 'metascore', 'release_date', 'discovered_at'])
+                writer.writerow(['title', 'game_name_slug', 'url', 'metascore', 'release_date', 'discovered_at'])
         
         return self.output_file
     
@@ -73,8 +72,9 @@ class GameDiscoverer:
         
         try:
             if output_format == 'txt':
+                # Simple format: just game name, one per line
                 with open(self.output_file, 'a', encoding='utf-8') as f:
-                    f.write(f"{game_data['game_name_slug']}|{game_data['platform_slug']}\n")
+                    f.write(f"{game_data['game_name_slug']}\n")
             
             elif output_format == 'json':
                 with open(self.output_file, 'r+', encoding='utf-8') as f:
@@ -99,8 +99,6 @@ class GameDiscoverer:
                     writer.writerow([
                         game_data.get('title', ''),
                         game_data.get('game_name_slug', ''),
-                        game_data.get('platform', ''),
-                        game_data.get('platform_slug', ''),
                         game_data.get('url', ''),
                         game_data.get('metascore', ''),
                         game_data.get('release_date', ''),
@@ -213,7 +211,7 @@ class GameDiscoverer:
                         if self.incremental:
                             self._append_game_to_file(game_data, output_format)
                         
-                        print(f"  [{games_found}] {game_data['title']} ({game_data['platform']}) - Score: {game_data.get('metascore', 'N/A')}")
+                        print(f"  [{games_found}] {game_data['title']} - Score: {game_data.get('metascore', 'N/A')}")
                 
                 if page_games == 0 and page > 1:
                     # No games found and we're past page 1 - might be end or filter issue
@@ -278,19 +276,16 @@ class GameDiscoverer:
             
             game_url = urljoin(self.base_url, link_elem.get('href', ''))
             
-            # Extract platform from URL
-            # URL format: /game/{platform}/{game-name}
-            url_parts = urlparse(game_url).path.split('/')
-            platform_slug = url_parts[2] if len(url_parts) > 2 else 'unknown'
-            game_name_slug = url_parts[3] if len(url_parts) > 3 else 'unknown'
+            # Extract game name from URL
+            # URL format: /game/{game-name}/ (new Metacritic format - no platform in browse URL)
+            url_parts = [p for p in urlparse(game_url).path.split('/') if p]  # Filter out empty strings
             
-            # Try to extract platform display name
-            platform_elem = (
-                card.select_one('div.c-finderProductCard_platform') or
-                card.select_one('span.platform') or
-                card.select_one('.c-globalProductCard_platform')
-            )
-            platform = platform_elem.get_text(strip=True) if platform_elem else platform_slug
+            # Expected: ['game', 'game-name']
+            if len(url_parts) >= 2 and url_parts[0] == 'game':
+                game_name_slug = url_parts[1]
+            else:
+                print(f"    ⚠ Cannot parse URL: {game_url}")
+                return None
             
             # Try to extract metascore
             score_elem = (
@@ -312,8 +307,6 @@ class GameDiscoverer:
             return {
                 'title': title,
                 'game_name_slug': game_name_slug,
-                'platform': platform,
-                'platform_slug': platform_slug,
                 'url': game_url,
                 'metascore': metascore,
                 'release_date': release_date,
@@ -357,7 +350,7 @@ class GameDiscoverer:
                 
                 if game_data:
                     self.discovered_games.append(game_data)
-                    print(f"[{i}] {game_data['title']} ({game_data['platform']}) - Score: {game_data.get('metascore', 'N/A')}")
+                    print(f"[{i}] {game_data['title']} - Score: {game_data.get('metascore', 'N/A')}")
             
         except requests.RequestException as e:
             print(f"✗ Error searching: {e}")
@@ -379,14 +372,9 @@ class GameDiscoverer:
             title = title_elem.get_text(strip=True)
             game_url = urljoin(self.base_url, title_elem.get('href', ''))
             
-            # Extract platform from URL
-            url_parts = urlparse(game_url).path.split('/')
-            platform_slug = url_parts[2] if len(url_parts) > 2 else 'unknown'
-            game_name_slug = url_parts[3] if len(url_parts) > 3 else 'unknown'
-            
-            # Extract platform display name
-            platform_elem = result.select_one('span.platform')
-            platform = platform_elem.get_text(strip=True) if platform_elem else platform_slug
+            # Extract game name from URL
+            url_parts = [p for p in urlparse(game_url).path.split('/') if p]
+            game_name_slug = url_parts[2] if len(url_parts) > 2 else url_parts[1] if len(url_parts) > 1 else 'unknown'
             
             # Extract metascore
             score_elem = result.select_one('div.metascore_w')
@@ -399,8 +387,6 @@ class GameDiscoverer:
             return {
                 'title': title,
                 'game_name_slug': game_name_slug,
-                'platform': platform,
-                'platform_slug': platform_slug,
                 'url': game_url,
                 'metascore': metascore,
                 'release_date': release_date,
@@ -443,10 +429,10 @@ class GameDiscoverer:
                         writer.writerows(self.discovered_games)
             
             elif output_format == 'txt':
-                # Simple text format for easy scraping
+                # Simple text format: one game per line
                 with open(filepath, 'w', encoding='utf-8') as f:
                     for game in self.discovered_games:
-                        f.write(f"{game['game_name_slug']}|{game['platform_slug']}\n")
+                        f.write(f"{game['game_name_slug']}\n")
             
             print(f"\n✓ Saved {len(self.discovered_games)} games to: {filepath}")
             
@@ -479,13 +465,13 @@ Examples:
                       help='Platform filter (e.g., playstation-5, pc, switch, all)')
     parser.add_argument('--min-score', type=int, default=None,
                       help='Minimum metascore (0-100)')
-    parser.add_argument('--max-pages', type=int, default=5,
-                      help='Maximum number of pages to browse (default: 5, use 0 for unlimited)')
+    parser.add_argument('--max-pages', type=int, default=0,
+                      help='Maximum number of pages to browse (default: 0, use 0 for unlimited)')
     parser.add_argument('--delay', type=float, default=3.0,
                       help='Delay between requests in seconds (default: 3.0)')
     parser.add_argument('--format', type=str, default='json',
                       choices=['json', 'csv', 'txt'],
-                      help='Output format (default: json)')
+                      help='Output format (default: txt)')
     parser.add_argument('--output', type=str, default=None,
                       help='Output filename (default: auto-generated)')
     parser.add_argument('--search', type=str, default=None,
@@ -516,15 +502,32 @@ Examples:
         print("=" * 70)
         print(f"Total games discovered: {len(discoverer.discovered_games)}")
         
-        # Show platform breakdown
-        platforms = {}
+        # Show score distribution
+        score_ranges = {'90+': 0, '80-89': 0, '70-79': 0, '60-69': 0, '<60': 0, 'N/A': 0}
         for game in discoverer.discovered_games:
-            platform = game['platform']
-            platforms[platform] = platforms.get(platform, 0) + 1
+            score = game.get('metascore')
+            if score:
+                try:
+                    score_val = int(score)
+                    if score_val >= 90:
+                        score_ranges['90+'] += 1
+                    elif score_val >= 80:
+                        score_ranges['80-89'] += 1
+                    elif score_val >= 70:
+                        score_ranges['70-79'] += 1
+                    elif score_val >= 60:
+                        score_ranges['60-69'] += 1
+                    else:
+                        score_ranges['<60'] += 1
+                except (ValueError, TypeError):
+                    score_ranges['N/A'] += 1
+            else:
+                score_ranges['N/A'] += 1
         
-        print("\nGames by platform:")
-        for platform, count in sorted(platforms.items(), key=lambda x: x[1], reverse=True):
-            print(f"  {platform}: {count}")
+        print("\nScore distribution:")
+        for range_name, count in score_ranges.items():
+            if count > 0:
+                print(f"  {range_name}: {count}")
         
         print("\n" + "=" * 70)
     else:
