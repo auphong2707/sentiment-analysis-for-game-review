@@ -61,7 +61,7 @@ class GameDiscoverer:
         elif output_format == 'csv':
             with open(self.output_file, 'w', newline='', encoding='utf-8') as f:
                 writer = csv.writer(f)
-                writer.writerow(['title', 'game_name_slug', 'platform_slug', 'url', 'metascore', 'release_date', 'discovered_at'])
+                writer.writerow(['title', 'game_name_slug', 'url', 'metascore', 'release_date', 'discovered_at'])
         
         return self.output_file
     
@@ -72,18 +72,9 @@ class GameDiscoverer:
         
         try:
             if output_format == 'txt':
-                # Format: game_name_slug|platform_slug (for scraper input)
-                # If platform_slug exists, use it; otherwise just game name
-                platform_slug = game_data.get('platform_slug', '')
-                game_name_slug = game_data['game_name_slug']
-                
-                if platform_slug:
-                    line = f"{game_name_slug}|{platform_slug}\n"
-                else:
-                    line = f"{game_name_slug}\n"
-                
+                # Simple format: just game name, one per line
                 with open(self.output_file, 'a', encoding='utf-8') as f:
-                    f.write(line)
+                    f.write(f"{game_data['game_name_slug']}\n")
             
             elif output_format == 'json':
                 with open(self.output_file, 'r+', encoding='utf-8') as f:
@@ -108,7 +99,6 @@ class GameDiscoverer:
                     writer.writerow([
                         game_data.get('title', ''),
                         game_data.get('game_name_slug', ''),
-                        game_data.get('platform_slug', ''),
                         game_data.get('url', ''),
                         game_data.get('metascore', ''),
                         game_data.get('release_date', ''),
@@ -132,7 +122,7 @@ class GameDiscoverer:
         except Exception as e:
             print(f"⚠ Error finalizing output file: {e}")
     
-    def discover_from_browse(self, platform=None, min_score=None, sort='score', output_format='txt', filename=None, fetch_all_platforms=False):
+    def discover_from_browse(self, platform=None, min_score=None, sort='score', output_format='txt', filename=None):
         """
         Discover games from Metacritic browse pages
         
@@ -142,7 +132,6 @@ class GameDiscoverer:
             sort: Sort order ('score', 'date', 'name')
             output_format: Output file format ('txt', 'json', 'csv')
             filename: Custom filename (optional)
-            fetch_all_platforms: If True, fetch all available platforms for each game and create separate entries
         """
         # Initialize output file for incremental saving
         if self.incremental:
@@ -155,7 +144,6 @@ class GameDiscoverer:
         print(f"Platform: {platform or 'all'}")
         print(f"Min Score: {min_score or 'none'}")
         print(f"Max Pages: {self.max_pages or 'unlimited'}")
-        print(f"Fetch all platforms: {'Yes' if fetch_all_platforms else 'No'}")
         print(f"Incremental save: {'Yes' if self.incremental else 'No'}")
         print("=" * 70)
         print()
@@ -200,7 +188,7 @@ class GameDiscoverer:
                 
                 page_games = 0
                 for card in game_cards:
-                    game_data = self._extract_game_from_card(card, soup, fetch_all_platforms=fetch_all_platforms)
+                    game_data = self._extract_game_from_card(card, soup)
                     
                     if game_data:
                         # Apply filters
@@ -211,42 +199,19 @@ class GameDiscoverer:
                             except (ValueError, TypeError):
                                 pass
                         
-                        # If we fetched all platforms, create separate entries for each platform
-                        if fetch_all_platforms and game_data.get('platforms'):
-                            for platform_slug in game_data['platforms']:
-                                platform_entry = game_data.copy()
-                                platform_entry['platform_slug'] = platform_slug
-                                platform_entry['game_name_slug'] = game_data['game_name_slug']
-                                
-                                # Apply platform filter if specified
-                                if platform and platform != 'all':
-                                    if platform_slug != platform:
-                                        continue
-                                
-                                self.discovered_games.append(platform_entry)
-                                page_games += 1
-                                games_found += 1
-                                
-                                # Save incrementally if enabled
-                                if self.incremental:
-                                    self._append_game_to_file(platform_entry, output_format)
-                                
-                                print(f"  [{games_found}] {platform_entry['title']} ({platform_slug}) - Score: {platform_entry.get('metascore', 'N/A')}")
-                        else:
-                            # Original behavior - single entry per game
-                            if platform and platform != 'all':
-                                if game_data.get('platform_slug') != platform:
-                                    continue
-                            
-                            self.discovered_games.append(game_data)
-                            page_games += 1
-                            games_found += 1
-                            
-                            # Save incrementally if enabled
-                            if self.incremental:
-                                self._append_game_to_file(game_data, output_format)
-                            
-                            print(f"  [{games_found}] {game_data['title']} - Score: {game_data.get('metascore', 'N/A')}")
+                        if platform and platform != 'all':
+                            if game_data.get('platform_slug') != platform:
+                                continue
+                        
+                        self.discovered_games.append(game_data)
+                        page_games += 1
+                        games_found += 1
+                        
+                        # Save incrementally if enabled
+                        if self.incremental:
+                            self._append_game_to_file(game_data, output_format)
+                        
+                        print(f"  [{games_found}] {game_data['title']} - Score: {game_data.get('metascore', 'N/A')}")
                 
                 if page_games == 0 and page > 1:
                     # No games found and we're past page 1 - might be end or filter issue
@@ -284,117 +249,8 @@ class GameDiscoverer:
         
         return self.discovered_games
     
-    def _get_all_platforms_for_game(self, game_name_slug, game_url):
-        """
-        Fetch all available platforms for a game by visiting the game page
-        
-        Args:
-            game_name_slug: The game slug (e.g., 'grand-theft-auto-iv')
-            game_url: The game's URL
-            
-        Returns:
-            List of platform slugs (e.g., ['pc', 'playstation-4', 'xbox-360'])
-        """
-        try:
-            print(f"    🔍 Fetching platforms for: {game_name_slug}")
-            
-            response = self.session.get(game_url, timeout=30)
-            response.raise_for_status()
-            
-            soup = BeautifulSoup(response.content, 'html.parser')
-            
-            platforms = []
-            
-            # Method 1: Look for platform switcher/selector on the page
-            # Metacritic shows platform tabs/buttons like: "PC", "PS4", "Xbox One", etc.
-            platform_selectors = (
-                soup.select('li.c-gamePlatformTabList_item a') or
-                soup.select('ul.c-gamePlatformTabList a') or
-                soup.select('.c-gamePlatformTab a') or
-                soup.select('li.product_platform a') or
-                []
-            )
-            
-            if platform_selectors:
-                for link in platform_selectors:
-                    href = link.get('href', '')
-                    # Extract platform from URL: /game/{platform}/{game-name} or /game/{game-name}/{platform}
-                    url_parts = [p for p in href.split('/') if p]
-                    if len(url_parts) >= 3 and url_parts[0] == 'game':
-                        platform_slug = url_parts[1]
-                        # Sometimes game name comes first, platform second
-                        if platform_slug == game_name_slug and len(url_parts) > 2:
-                            platform_slug = url_parts[2]
-                        
-                        if platform_slug != game_name_slug and platform_slug not in platforms:
-                            platforms.append(platform_slug)
-                            print(f"      ✓ Found platform: {platform_slug}")
-            
-            # Method 2: Look for platform badges/spans in the title area
-            if not platforms:
-                platform_badges = (
-                    soup.select('.c-productHero_platforms span') or
-                    soup.select('.c-ProductHeroGamePlatformInfo span') or
-                    []
-                )
-                
-                platform_map = {
-                    'pc': 'pc',
-                    'playstation 5': 'playstation-5',
-                    'ps5': 'playstation-5',
-                    'playstation 4': 'playstation-4', 
-                    'ps4': 'playstation-4',
-                    'playstation 3': 'playstation-3',
-                    'ps3': 'playstation-3',
-                    'xbox series x': 'xbox-series-x',
-                    'xbox one': 'xbox-one',
-                    'xbox 360': 'xbox-360',
-                    'switch': 'switch',
-                    'nintendo switch': 'switch',
-                    'wii u': 'wii-u',
-                    'wii': 'wii',
-                    'gamecube': 'gamecube',
-                    'n64': 'nintendo-64',
-                }
-                
-                for badge in platform_badges:
-                    platform_text = badge.get_text(strip=True).lower()
-                    platform_slug = platform_map.get(platform_text)
-                    if platform_slug and platform_slug not in platforms:
-                        platforms.append(platform_slug)
-                        print(f"      ✓ Found platform: {platform_slug}")
-            
-            # Method 3: Parse the main URL if it contains platform info
-            if not platforms:
-                url_parts = [p for p in urlparse(game_url).path.split('/') if p]
-                # Check if URL has format: /game/{platform}/{game-name}
-                if len(url_parts) >= 3 and url_parts[0] == 'game':
-                    potential_platform = url_parts[1]
-                    # Verify it's not the game name
-                    if potential_platform != game_name_slug:
-                        platforms.append(potential_platform)
-                        print(f"      ✓ Found platform from URL: {potential_platform}")
-            
-            if not platforms:
-                print(f"      ⚠ No platforms found for {game_name_slug}")
-                return []
-            
-            print(f"      📊 Total platforms: {len(platforms)}")
-            return platforms
-            
-        except Exception as e:
-            print(f"      ⚠ Error fetching platforms: {e}")
-            return []
-    
-    def _extract_game_from_card(self, card, soup, fetch_all_platforms=False):
-        """
-        Extract game information from a card element
-        
-        Args:
-            card: BeautifulSoup element containing game card
-            soup: Full page soup (not used but kept for compatibility)
-            fetch_all_platforms: If True, fetch all available platforms for each game
-        """
+    def _extract_game_from_card(self, card, soup):
+        """Extract game information from a card element"""
         try:
             # Try to extract title
             title_elem = (
@@ -448,7 +304,7 @@ class GameDiscoverer:
             )
             release_date = date_elem.get_text(strip=True) if date_elem else None
             
-            game_data = {
+            return {
                 'title': title,
                 'game_name_slug': game_name_slug,
                 'url': game_url,
@@ -456,15 +312,6 @@ class GameDiscoverer:
                 'release_date': release_date,
                 'discovered_at': datetime.now().isoformat()
             }
-            
-            # Fetch all platforms if requested
-            if fetch_all_platforms:
-                platforms = self._get_all_platforms_for_game(game_name_slug, game_url)
-                game_data['platforms'] = platforms
-                # Add delay after fetching platforms to be respectful
-                time.sleep(1)
-            
-            return game_data
             
         except Exception as e:
             print(f"    ⚠ Error extracting game data: {e}")
@@ -603,20 +450,14 @@ Examples:
   # Discover all games (first 10 pages)
   python discover_games.py --max-pages 10
   
-  # Discover all games with ALL platforms (creates separate entry per platform)
-  python discover_games.py --max-pages 5 --fetch-all-platforms
-  
   # Discover PS5 games with score >= 80
   python discover_games.py --platform playstation-5 --min-score 80 --max-pages 5
-  
-  # Discover and fetch all platforms for each game (for comprehensive scraping)
-  python discover_games.py --max-pages 3 --fetch-all-platforms --format txt
   
   # Search for specific game
   python discover_games.py --search "god of war"
   
-  # Save as CSV with all platforms
-  python discover_games.py --max-pages 5 --format csv --fetch-all-platforms
+  # Save as CSV
+  python discover_games.py --max-pages 5 --format csv
         """
     )
     
@@ -628,15 +469,13 @@ Examples:
                       help='Maximum number of pages to browse (default: 0, use 0 for unlimited)')
     parser.add_argument('--delay', type=float, default=3.0,
                       help='Delay between requests in seconds (default: 3.0)')
-    parser.add_argument('--format', type=str, default='txt',
+    parser.add_argument('--format', type=str, default='json',
                       choices=['json', 'csv', 'txt'],
                       help='Output format (default: txt)')
     parser.add_argument('--output', type=str, default=None,
                       help='Output filename (default: auto-generated)')
     parser.add_argument('--search', type=str, default=None,
                       help='Search for specific game instead of browsing')
-    parser.add_argument('--fetch-all-platforms', action='store_true',
-                      help='Fetch all available platforms for each game (creates separate entries per platform)')
     
     args = parser.parse_args()
     
@@ -651,8 +490,7 @@ Examples:
             platform=args.platform if args.platform != 'all' else None,
             min_score=args.min_score,
             output_format=args.format,
-            filename=args.output,
-            fetch_all_platforms=args.fetch_all_platforms
+            filename=args.output
         )
     
     # Save results (will skip if already saved incrementally)
