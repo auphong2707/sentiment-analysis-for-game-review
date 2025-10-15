@@ -1,3 +1,9 @@
+# Scraped data
+data/*.csv
+data/*.json
+data/*.xlsx
+httpcache/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
