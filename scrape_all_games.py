@@ -113,12 +113,15 @@ class GameScraper:
                 print(f"⚠ Warning: No reviews found in {temp_json_file}")
                 return 0
             
+            print(f"📊 Found {len(reviews)} reviews in temporary file")
+            
             # Append each review as a JSON line
             with open(self.output_file, 'a', encoding='utf-8') as f:
                 for review in reviews:
                     json.dump(review, f, ensure_ascii=False)
                     f.write('\n')
             
+            print(f"✓ Appended {len(reviews)} reviews to JSONL file")
             return len(reviews)
             
         except json.JSONDecodeError as e:
@@ -259,6 +262,8 @@ class GameScraper:
         
         print(f"Command: {' '.join(command)}")
         print()
+        print("🔄 Starting Scrapy (live output below)...")
+        print("─" * 70)
         
         try:
             # Run scraper (increased timeout for Playwright)
@@ -269,25 +274,42 @@ class GameScraper:
                 estimated_time = 30 + (self.max_reviews * 0.5)
                 timeout = max(600, int(estimated_time * 1.5))  # 1.5x buffer
             
+            # Run without capturing output so we can see live progress
             result = subprocess.run(
                 command,
-                capture_output=True,
-                text=True,
                 timeout=timeout
             )
             
+            print("─" * 70)
+            print("✓ Scrapy completed")
+            print()
+            
             if result.returncode == 0:
+                print(f"{'─' * 50}")
+                print("📥 Processing scraped data...")
+                
                 # Read temporary JSON file and append to JSONL
                 review_count = self._append_to_jsonl(temp_output)
                 
                 # Clean up temporary file
                 try:
                     Path(temp_output).unlink()
+                    print(f"🗑️  Cleaned up temporary file")
                 except:
                     pass
                 
-                print(f"✓ Successfully scraped: {game_name} ({platform})")
-                print(f"✓ Appended {review_count} reviews to: {self.output_file}")
+                # Calculate cumulative stats
+                total_reviews_so_far = sum(r.get('review_count', 0) for r in self.results['success']) + review_count
+                successful_games_so_far = len(self.results['success']) + 1
+                
+                print(f"{'─' * 50}")
+                print(f"✅ Successfully scraped: {game_name} ({platform})")
+                print(f"📊 Reviews from this game: {review_count}")
+                print(f"📈 Total reviews so far: {total_reviews_so_far}")
+                print(f"🎮 Games completed: {successful_games_so_far}/{game_num}")
+                print(f"💾 Output file: {self.output_file}")
+                print(f"{'─' * 50}\n")
+                
                 self.results['success'].append({
                     'game': game_name,
                     'platform': platform,
@@ -298,12 +320,14 @@ class GameScraper:
                 self._save_progress()  # Save progress after each successful scrape
                 return True
             else:
-                print(f"✗ Failed to scrape: {game_name} ({platform})")
-                print(f"Error output:\n{result.stderr[:500]}")
+                print(f"\n{'─' * 50}")
+                print(f"❌ Failed to scrape: {game_name} ({platform})")
+                print(f"Exit code: {result.returncode}")
+                print(f"{'─' * 50}\n")
                 self.results['failed'].append({
                     'game': game_name,
                     'platform': platform,
-                    'error': result.stderr[:200],
+                    'error': f'Exit code: {result.returncode}',
                     'timestamp': datetime.now().isoformat()
                 })
                 self._save_progress()  # Save progress even on failure
@@ -348,16 +372,21 @@ class GameScraper:
                                  g.get('platform_slug', g.get('platform', ''))
                              ))
         
+        # Calculate existing reviews from previous successful scrapes
+        existing_reviews = sum(r.get('review_count', 0) for r in self.results['success'])
+        
         print("\n" + "=" * 70)
-        print("STARTING BULK SCRAPING")
+        print("🚀 STARTING BULK SCRAPING")
         print("=" * 70)
-        print(f"Total games: {total_games}")
-        print(f"Already scraped: {already_scraped}")
-        print(f"Remaining: {total_games - already_scraped}")
-        print(f"Max reviews per game: {self.max_reviews or 'unlimited'}")
-        print(f"Delay between games: {self.delay}s")
-        print(f"Skip existing: {'Yes' if self.skip_existing else 'No'}")
-        print(f"Progress file: {self.progress_file}")
+        print(f"📋 Total games in list: {total_games}")
+        print(f"✅ Already scraped: {already_scraped}")
+        print(f"⏳ Remaining to scrape: {total_games - already_scraped}")
+        print(f"📊 Reviews collected so far: {existing_reviews}")
+        print(f"🎯 Max reviews per game: {self.max_reviews or 'unlimited'}")
+        print(f"⏱️  Delay between games: {self.delay}s")
+        print(f"⏭️  Skip existing: {'Yes' if self.skip_existing else 'No'}")
+        print(f"💾 Progress file: {self.progress_file}")
+        print(f"📁 Output file: {self.output_file}")
         print("=" * 70)
         
         for i, game in enumerate(games, 1):
@@ -379,7 +408,22 @@ class GameScraper:
             
             # Delay between games (except after last game)
             if i < total_games:
-                print(f"\nWaiting {self.delay}s before next game...")
+                remaining = total_games - i
+                current_success = len(self.results['success'])
+                current_reviews = sum(r.get('review_count', 0) for r in self.results['success'])
+                avg_reviews = current_reviews / current_success if current_success > 0 else 0
+                
+                print(f"\n{'═' * 70}")
+                print(f"📊 Progress Update:")
+                print(f"   ├─ Games completed: {i}/{total_games} ({(i/total_games)*100:.1f}%)")
+                print(f"   ├─ Games remaining: {remaining}")
+                print(f"   ├─ Successful: {len(self.results['success'])}")
+                print(f"   ├─ Failed: {len(self.results['failed'])}")
+                print(f"   ├─ Skipped: {len(self.results['skipped'])}")
+                print(f"   ├─ Total reviews: {current_reviews}")
+                print(f"   └─ Average reviews/game: {avg_reviews:.1f}")
+                print(f"{'═' * 70}")
+                print(f"\n⏳ Waiting {self.delay}s before next game...")
                 time.sleep(self.delay)
         
         # Print summary
@@ -388,16 +432,23 @@ class GameScraper:
         
         # Count total reviews
         total_reviews = sum(r.get('review_count', 0) for r in self.results['success'])
+        successful_count = len(self.results['success'])
+        avg_reviews = total_reviews / successful_count if successful_count > 0 else 0
+        avg_time = duration / successful_count if successful_count > 0 else 0
         
         print("\n" + "=" * 70)
-        print("SCRAPING COMPLETE")
+        print("🎉 SCRAPING COMPLETE")
         print("=" * 70)
-        print(f"Duration: {duration:.1f} seconds ({duration/60:.1f} minutes)")
-        print(f"Successful: {len(self.results['success'])} games")
-        print(f"Failed: {len(self.results['failed'])} games")
-        print(f"Skipped: {len(self.results['skipped'])} games")
-        print(f"Total reviews: {total_reviews}")
-        print(f"Output file: {self.output_file}")
+        print(f"⏱️  Duration: {duration:.1f} seconds ({duration/60:.1f} minutes)")
+        print(f"✅ Successful: {len(self.results['success'])} games")
+        print(f"❌ Failed: {len(self.results['failed'])} games")
+        print(f"⏭️  Skipped: {len(self.results['skipped'])} games")
+        print(f"\n📊 Review Statistics:")
+        print(f"   ├─ Total reviews collected: {total_reviews}")
+        print(f"   ├─ Average reviews per game: {avg_reviews:.1f}")
+        print(f"   ├─ Average time per game: {avg_time:.1f}s")
+        print(f"   └─ Reviews per minute: {(total_reviews / (duration / 60)):.1f}")
+        print(f"\n💾 Output file: {self.output_file}")
         print("=" * 70)
         
         # Save results log
