@@ -11,6 +11,9 @@ A comprehensive project for scraping video game reviews from Metacritic and perf
 - ⚙️ **Configurable**: Easy-to-configure settings for rate limiting, retry logic, and more
 - 🔄 **Duplicate Filtering**: Prevents duplicate reviews in your dataset
 - 📝 **Detailed Logging**: Comprehensive logging for debugging and monitoring
+- 🚀 **Mass Scraping Tools**: Automated scripts to discover and scrape thousands of games
+- 🔍 **Game Discovery**: Browse Metacritic to find all available games automatically
+- 📦 **Data Combining**: Merge multiple scraped files into unified datasets
 
 ## Project Structure
 
@@ -26,9 +29,16 @@ sentiment-analysis-for-game-review/
 ├── data/                        # Output directory for scraped data
 ├── config.py                    # Configuration file
 ├── run_scraper.py               # Interactive scraper runner
+├── discover_games.py            # 🆕 Discover all games from Metacritic
+├── scrape_all_games.py          # 🆕 Scrape multiple games from list
+├── quick_scrape_everything.py   # 🆕 Complete automated workflow
+├── combine_data.py              # 🆕 Combine multiple review files
+├── games_template.txt           # 🆕 Template for custom game lists
+├── test_connection.py           # Test Metacritic connectivity
 ├── requirements.txt             # Python dependencies
 ├── scrapy.cfg                   # Scrapy project configuration
-├── .env.example                 # Environment variables template
+├── MASS_SCRAPING_GUIDE.md       # 🆕 Complete mass scraping guide
+├── QUICK_REFERENCE.md           # 🆕 Quick command reference
 └── README.md                    # This file
 ```
 
@@ -89,7 +99,39 @@ This will guide you through:
 - Selecting the platform
 - Setting the maximum number of reviews (optional)
 
-### Method 2: Command Line
+### Method 2: Mass Scraping (NEW! - Scrape All Games) 🚀
+
+Automatically discover and scrape thousands of games:
+
+```bash
+# Quick start - scrape everything!
+python quick_scrape_everything.py
+
+# Scrape PS5 games, 100 reviews each
+python quick_scrape_everything.py --platform playstation-5 --max-reviews 100 --max-pages 5
+
+# High-quality dataset (score >= 70)
+python quick_scrape_everything.py --min-score 70 --max-reviews 200 --max-pages 10
+```
+
+**Or step by step:**
+
+```bash
+# 1. Discover all available games
+python discover_games.py --max-pages 10 --platform all
+
+# 2. Scrape all discovered games
+python scrape_all_games.py --input data/discovered_games_TIMESTAMP.txt --max-reviews 100 --skip-errors
+
+# 3. Combine all results
+python combine_data.py
+```
+
+📖 **See [MASS_SCRAPING_GUIDE.md](MASS_SCRAPING_GUIDE.md) for complete mass scraping documentation**
+
+📋 **See [QUICK_REFERENCE.md](QUICK_REFERENCE.md) for command cheat sheet**
+
+### Method 3: Command Line (Single Game)
 
 Scrape reviews for a specific game by providing the game name and platform:
 
