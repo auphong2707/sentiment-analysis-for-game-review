@@ -25,11 +25,12 @@ import random
 class GameDiscoverer:
     """Discovers games from Metacritic browse pages"""
     
-    def __init__(self, delay=3, max_pages=None, incremental=True):
+    def __init__(self, delay=3, max_pages=None, incremental=True, split_files=1):
         self.base_url = "https://www.metacritic.com"
         self.delay = delay
         self.max_pages = max_pages
         self.incremental = incremental
+        self.split_files = max(1, split_files)  # At least 1 file
         self.discovered_games = []
         self.session = requests.Session()
         self.session.headers.update({
@@ -41,29 +42,55 @@ class GameDiscoverer:
             'Upgrade-Insecure-Requests': '1',
         })
         self.output_file = None
+        self.output_files = []  # List of output file paths when splitting
         self.discovered_count = 0
+        self.current_file_index = 0
     
     def _initialize_output_file(self, output_format='txt', filename=None):
-        """Initialize the output file for incremental saving"""
+        """Initialize the output file(s) for incremental saving"""
         if not filename:
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
             filename = f"discovered_games_{timestamp}.{output_format}"
         
-        self.output_file = Path(f"data/{filename}")
-        self.output_file.parent.mkdir(parents=True, exist_ok=True)
-        
-        # For JSON, start with an array
-        if output_format == 'json':
-            with open(self.output_file, 'w', encoding='utf-8') as f:
-                f.write('[\n')
-        
-        # For CSV, write headers
-        elif output_format == 'csv':
-            with open(self.output_file, 'w', newline='', encoding='utf-8') as f:
-                writer = csv.writer(f)
-                writer.writerow(['title', 'game_name_slug', 'url', 'metascore', 'release_date', 'discovered_at'])
-        
-        return self.output_file
+        # If splitting into multiple files
+        if self.split_files > 1:
+            self.output_files = []
+            base_name = filename.rsplit('.', 1)[0]
+            extension = filename.rsplit('.', 1)[1] if '.' in filename else output_format
+            
+            for i in range(self.split_files):
+                file_path = Path(f"data/{base_name}_part{i+1}.{extension}")
+                file_path.parent.mkdir(parents=True, exist_ok=True)
+                self.output_files.append(file_path)
+                
+                # Initialize each file
+                if output_format == 'json':
+                    with open(file_path, 'w', encoding='utf-8') as f:
+                        f.write('[\n')
+                elif output_format == 'csv':
+                    with open(file_path, 'w', newline='', encoding='utf-8') as f:
+                        writer = csv.writer(f)
+                        writer.writerow(['title', 'game_name_slug', 'url', 'metascore', 'release_date', 'discovered_at'])
+            
+            self.output_file = self.output_files[0]  # Set first file as current
+            return self.output_files
+        else:
+            # Single file mode
+            self.output_file = Path(f"data/{filename}")
+            self.output_file.parent.mkdir(parents=True, exist_ok=True)
+            
+            # For JSON, start with an array
+            if output_format == 'json':
+                with open(self.output_file, 'w', encoding='utf-8') as f:
+                    f.write('[\n')
+            
+            # For CSV, write headers
+            elif output_format == 'csv':
+                with open(self.output_file, 'w', newline='', encoding='utf-8') as f:
+                    writer = csv.writer(f)
+                    writer.writerow(['title', 'game_name_slug', 'url', 'metascore', 'release_date', 'discovered_at'])
+            
+            return self.output_file
     
     def _append_game_to_file(self, game_data, output_format='txt'):
         """Append a single game to the output file immediately"""
@@ -71,19 +98,31 @@ class GameDiscoverer:
             return
         
         try:
+            # Determine which file to write to when splitting
+            if self.split_files > 1:
+                # Distribute games evenly across files
+                file_index = self.discovered_count % self.split_files
+                current_file = self.output_files[file_index]
+                
+                # Track items per file for JSON comma handling
+                items_in_file = self.discovered_count // self.split_files
+            else:
+                current_file = self.output_file
+                items_in_file = self.discovered_count
+            
             if output_format == 'txt':
                 # Simple format: just game name, one per line
-                with open(self.output_file, 'a', encoding='utf-8') as f:
+                with open(current_file, 'a', encoding='utf-8') as f:
                     f.write(f"{game_data['game_name_slug']}\n")
             
             elif output_format == 'json':
-                with open(self.output_file, 'r+', encoding='utf-8') as f:
+                with open(current_file, 'r+', encoding='utf-8') as f:
                     # Move to end, overwrite the last closing bracket
                     f.seek(0, 2)  # Go to end
                     pos = f.tell()
                     
-                    # Add comma if not first entry
-                    if self.discovered_count > 0:
+                    # Add comma if not first entry in this file
+                    if items_in_file > 0:
                         f.seek(pos - 2)  # Move back before \n
                         f.write(',\n')
                     
@@ -94,7 +133,7 @@ class GameDiscoverer:
                     f.write(json_line + '\n')
             
             elif output_format == 'csv':
-                with open(self.output_file, 'a', newline='', encoding='utf-8') as f:
+                with open(current_file, 'a', newline='', encoding='utf-8') as f:
                     writer = csv.writer(f)
                     writer.writerow([
                         game_data.get('title', ''),
@@ -111,14 +150,20 @@ class GameDiscoverer:
             print(f"    ⚠ Error saving game to file: {e}")
     
     def _finalize_output_file(self, output_format='txt'):
-        """Finalize the output file (close JSON array, etc.)"""
+        """Finalize the output file(s) (close JSON array, etc.)"""
         if not self.output_file:
             return
         
         try:
             if output_format == 'json':
-                with open(self.output_file, 'a', encoding='utf-8') as f:
-                    f.write(']\n')
+                # If splitting, finalize all files
+                if self.split_files > 1:
+                    for file_path in self.output_files:
+                        with open(file_path, 'a', encoding='utf-8') as f:
+                            f.write(']\n')
+                else:
+                    with open(self.output_file, 'a', encoding='utf-8') as f:
+                        f.write(']\n')
         except Exception as e:
             print(f"⚠ Error finalizing output file: {e}")
     
@@ -136,7 +181,12 @@ class GameDiscoverer:
         # Initialize output file for incremental saving
         if self.incremental:
             output_file = self._initialize_output_file(output_format, filename)
-            print(f"Incremental output: {output_file}")
+            if self.split_files > 1:
+                print(f"Incremental output (split into {self.split_files} files):")
+                for i, f in enumerate(self.output_files, 1):
+                    print(f"  Part {i}: {f}")
+            else:
+                print(f"Incremental output: {output_file}")
         
         print("=" * 70)
         print("GAME DISCOVERY - Metacritic Browse")
@@ -145,6 +195,7 @@ class GameDiscoverer:
         print(f"Min Score: {min_score or 'none'}")
         print(f"Max Pages: {self.max_pages or 'unlimited'}")
         print(f"Incremental save: {'Yes' if self.incremental else 'No'}")
+        print(f"Split into files: {self.split_files}")
         print("=" * 70)
         print()
         
@@ -243,8 +294,15 @@ class GameDiscoverer:
         
         print("\n" + "=" * 70)
         print(f"DISCOVERY COMPLETE - Found {len(self.discovered_games)} games")
-        if self.incremental and self.output_file:
-            print(f"Saved to: {self.output_file}")
+        if self.incremental:
+            if self.split_files > 1:
+                print(f"Saved to {self.split_files} files:")
+                for i, f in enumerate(self.output_files, 1):
+                    # Count games in each file
+                    games_in_file = len([g for idx, g in enumerate(self.discovered_games) if idx % self.split_files == (i-1)])
+                    print(f"  Part {i}: {f} ({games_in_file} games)")
+            elif self.output_file:
+                print(f"Saved to: {self.output_file}")
         print("=" * 70)
         
         return self.discovered_games
@@ -458,6 +516,9 @@ Examples:
   
   # Save as CSV
   python discover_games.py --max-pages 5 --format csv
+  
+  # Split output into 3 files
+  python discover_games.py --max-pages 10 --split-files 3
         """
     )
     
@@ -476,11 +537,13 @@ Examples:
                       help='Output filename (default: auto-generated)')
     parser.add_argument('--search', type=str, default=None,
                       help='Search for specific game instead of browsing')
+    parser.add_argument('--split-files', type=int, default=1,
+                      help='Split output into N files (default: 1, no splitting)')
     
     args = parser.parse_args()
     
     # Create discoverer with incremental saving enabled by default
-    discoverer = GameDiscoverer(delay=args.delay, max_pages=args.max_pages, incremental=True)
+    discoverer = GameDiscoverer(delay=args.delay, max_pages=args.max_pages, incremental=True, split_files=args.split_files)
     
     # Discover games
     if args.search:
