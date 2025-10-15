@@ -9,7 +9,7 @@ Uses Scrapy-Playwright to render JavaScript and load all reviews dynamically.
 Usage:
     scrapy crawl metacritic_reviews -a game_url="https://www.metacritic.com/game/pc/..."
     scrapy crawl metacritic_reviews -a game_name="the-last-of-us-part-ii" -a platform="playstation-4"
-    scrapy crawl metacritic_reviews -a game_name="the-last-of-us-part-ii" -a platform="playstation-4" -a max_reviews=100
+    scrapy crawl metacritic_reviews -a game_name="the-last-of-us-part-ii" -a platform="playstation-4" -a max_reviews_per_platform=100
 """
 
 import scrapy
@@ -31,11 +31,12 @@ class MetacriticReviewsSpider(scrapy.Spider):
         'RETRY_TIMES': 5,
     }
     
-    def __init__(self, game_url=None, game_name=None, platform=None, max_reviews=None, *args, **kwargs):
+    def __init__(self, game_url=None, game_name=None, platform=None, max_reviews_per_platform=None, *args, **kwargs):
         super(MetacriticReviewsSpider, self).__init__(*args, **kwargs)
         
-        self.max_reviews = int(max_reviews) if max_reviews else None
-        self.reviews_count = 0
+        self.max_reviews_per_platform = int(max_reviews_per_platform) if max_reviews_per_platform else None
+        self.total_reviews_count = 0  # Total across all platforms
+        self.platform_reviews_count = {}  # Track count per platform
         
         # Build the game URL from components or use provided URL
         if game_url:
@@ -143,8 +144,24 @@ class MetacriticReviewsSpider(scrapy.Spider):
         }
         
         # Navigate to user reviews page
-        # Metacritic structure: game page -> user-reviews section
-        user_reviews_url = response.url.rstrip('/') + '/user-reviews'
+        # To get ALL reviews across all platforms, we need to remove the platform from URL
+        # Convert: /game/platform/game-name -> /game/game-name/user-reviews
+        # Note: Metacritic's review page may default to showing one platform at a time
+        # even on the cross-platform URL. The platform filter is handled via JavaScript
+        # on the client side. Individual reviews may not always include platform metadata.
+        import re
+        url_match = re.match(r'(https://www\.metacritic\.com/game)/([^/]+)/([^/]+)', response.url)
+        if url_match:
+            base_url = url_match.group(1)
+            platform_part = url_match.group(2)
+            game_name_part = url_match.group(3)
+            # Create cross-platform URL (without platform specification)
+            user_reviews_url = f"{base_url}/{game_name_part}/user-reviews"
+            self.logger.info(f"Cross-platform reviews URL: {user_reviews_url}")
+        else:
+            # Fallback to original behavior if URL doesn't match expected pattern
+            user_reviews_url = response.url.rstrip('/') + '/user-reviews'
+            self.logger.warning(f"Using platform-specific reviews URL: {user_reviews_url}")
         
         # Use Playwright to load and scroll through reviews
         yield scrapy.Request(
@@ -168,7 +185,7 @@ class MetacriticReviewsSpider(scrapy.Spider):
         """
         Parse a page of user reviews with Playwright
         
-        Uses Playwright to scroll and load all reviews dynamically
+        First discovers all available platforms, then scrapes reviews for each platform
         """
         
         self.logger.info(f"Parsing reviews page: {response.url}")
@@ -182,6 +199,129 @@ class MetacriticReviewsSpider(scrapy.Spider):
                 await page.wait_for_selector('div.c-siteReview, div.review_content', timeout=10000)
                 self.logger.info("✓ Initial reviews loaded")
                 
+                # Discover available platforms from dropdown
+                platforms = []
+                try:
+                    # First, click on the platform filter dropdown to make options visible
+                    # Look for the dropdown button (usually says "Filter by platform" or shows current platform)
+                    dropdown_button = await page.query_selector('button[data-testid="siteDropdown"]')
+                    if dropdown_button:
+                        self.logger.info("Clicking platform dropdown to reveal options...")
+                        await dropdown_button.click()
+                        await page.wait_for_timeout(1000)  # Wait for dropdown to open
+                    
+                    # Now get all dropdown options (should be visible after clicking)
+                    platform_options = await page.query_selector_all('div[data-testid="siteDropdownOptions"] div.c-siteDropdown_option span.u-text-overflow-ellipsis')
+                    
+                    # Known valid platforms - filter out review filter options
+                    valid_platforms = []
+                    filter_keywords = ['all reviews', 'positive', 'mixed', 'negative', 'recently added', 'score', 'reviews']
+                    
+                    for option in platform_options:
+                        platform_text = await option.text_content()
+                        if platform_text:
+                            platform_text = platform_text.strip()
+                            # Check if this is a platform (not a filter option)
+                            is_filter = any(keyword in platform_text.lower() for keyword in filter_keywords)
+                            if not is_filter and platform_text:
+                                valid_platforms.append(platform_text)
+                    
+                    platforms = valid_platforms
+                    
+                    if platforms:
+                        self.logger.info(f"✓ Found {len(platforms)} platform(s): {platforms}")
+                    else:
+                        self.logger.warning("No valid platforms found in dropdown, will scrape current page only")
+                        platforms = [None]  # Scrape whatever is currently displayed
+                        
+                except Exception as e:
+                    self.logger.warning(f"Could not find platform dropdown: {e}")
+                    platforms = [None]  # Scrape whatever is currently displayed
+                
+                # Close the initial page
+                await page.close()
+                
+                # Now scrape reviews for each platform
+                for platform in platforms:
+                    if platform:
+                        self.logger.info(f"🎮 Scraping reviews for platform: {platform}")
+                        # Construct platform-specific URL using query parameter
+                        # Convert platform text to URL format (e.g., "PlayStation 3" -> "playstation-3")
+                        platform_slug = platform.lower().replace(' ', '-')
+                        
+                        # Use query parameter for platform filtering
+                        platform_url = f"{response.url.rstrip('/')}?platform={platform_slug}"
+                        
+                        # Scrape this platform's reviews
+                        yield scrapy.Request(
+                            url=platform_url,
+                            callback=self.parse_platform_reviews,
+                            errback=self.handle_error,
+                            meta={
+                                "playwright": True,
+                                "playwright_include_page": True,
+                                "playwright_page_goto_kwargs": {
+                                    "wait_until": "domcontentloaded",
+                                    "timeout": 60000,
+                                },
+                                "playwright_page_methods": [
+                                    {"wait_for_timeout": 5000},
+                                ],
+                                "platform": platform,
+                            }
+                        )
+                    else:
+                        # No platform info, scrape current page
+                        yield scrapy.Request(
+                            url=response.url,
+                            callback=self.parse_platform_reviews,
+                            errback=self.handle_error,
+                            meta={
+                                "playwright": True,
+                                "playwright_include_page": True,
+                                "playwright_page_goto_kwargs": {
+                                    "wait_until": "domcontentloaded",
+                                    "timeout": 60000,
+                                },
+                                "playwright_page_methods": [
+                                    {"wait_for_timeout": 5000},
+                                ],
+                                "platform": None,
+                            }
+                        )
+                        
+            except Exception as e:
+                self.logger.error(f"Error during platform discovery: {e}")
+                if page:
+                    await page.close()
+        else:
+            # No Playwright page, fallback to regular parsing
+            for item in self.parse_platform_reviews(response):
+                yield item
+    
+    async def parse_platform_reviews(self, response):
+        """
+        Parse reviews for a specific platform
+        
+        Uses Playwright to scroll and load all reviews dynamically
+        """
+        
+        platform = response.meta.get('platform', 'Unknown')
+        self.logger.info(f"Parsing reviews for {platform}: {response.url}")
+        
+        # Initialize counter for this platform if not exists
+        if platform not in self.platform_reviews_count:
+            self.platform_reviews_count[platform] = 0
+        
+        # Get the Playwright page object
+        page = response.meta.get("playwright_page")
+        
+        if page:
+            try:
+                # Wait for reviews to load
+                await page.wait_for_selector('div.c-siteReview, div.review_content', timeout=10000)
+                self.logger.info(f"✓ Reviews loaded for {platform}")
+                
                 # Scroll and load more reviews
                 previous_count = 0
                 scroll_attempts = 0
@@ -192,16 +332,16 @@ class MetacriticReviewsSpider(scrapy.Spider):
                     current_reviews = await page.query_selector_all('div.c-siteReview, div.review_content')
                     current_count = len(current_reviews)
                     
-                    self.logger.info(f"📊 Currently loaded: {current_count} reviews")
+                    self.logger.info(f"📊 {platform}: Currently loaded {current_count} reviews")
                     
-                    # Check if we've reached max_reviews limit
-                    if self.max_reviews and current_count >= self.max_reviews:
-                        self.logger.info(f"✓ Reached target: {self.max_reviews} reviews")
+                    # Check if we've reached max_reviews_per_platform limit for this platform
+                    if self.max_reviews_per_platform and current_count >= self.max_reviews_per_platform:
+                        self.logger.info(f"✓ {platform}: Reached platform limit of {self.max_reviews_per_platform} reviews")
                         break
                     
                     # Check if no new reviews loaded
                     if current_count == previous_count:
-                        self.logger.info("✓ No more reviews to load")
+                        self.logger.info(f"✓ {platform}: No more reviews to load")
                         break
                     
                     previous_count = current_count
@@ -214,7 +354,7 @@ class MetacriticReviewsSpider(scrapy.Spider):
                     try:
                         load_more_button = await page.query_selector('button:has-text("Load More"), a:has-text("Load More"), button.load-more')
                         if load_more_button:
-                            self.logger.info("🔄 Clicking 'Load More' button")
+                            self.logger.info(f"🔄 {platform}: Clicking 'Load More' button")
                             await load_more_button.click()
                             await page.wait_for_timeout(2000)
                     except:
@@ -222,7 +362,7 @@ class MetacriticReviewsSpider(scrapy.Spider):
                     
                     scroll_attempts += 1
                 
-                self.logger.info(f"✓ Finished loading reviews. Total: {previous_count}")
+                self.logger.info(f"✓ {platform}: Finished loading reviews. Total: {previous_count}")
                 
                 # Get the final HTML content
                 content = await page.content()
@@ -239,7 +379,7 @@ class MetacriticReviewsSpider(scrapy.Spider):
                 )
                 
             except Exception as e:
-                self.logger.error(f"Error during Playwright interaction: {e}")
+                self.logger.error(f"Error during Playwright interaction for {platform}: {e}")
                 if page:
                     await page.close()
                 final_response = response
@@ -250,25 +390,27 @@ class MetacriticReviewsSpider(scrapy.Spider):
         reviews = final_response.css('div.review_content, div.c-siteReview')
         
         if not reviews:
-            self.logger.warning(f"No reviews found on page: {response.url}")
+            self.logger.warning(f"No reviews found for {platform} on page: {response.url}")
             reviews = final_response.css('div.user_review')
         
-        self.logger.info(f"Found {len(reviews)} reviews to parse")
+        self.logger.info(f"Found {len(reviews)} reviews to parse for {platform}")
         
         # Parse each review
         for review in reviews:
-            if self.max_reviews and self.reviews_count >= self.max_reviews:
-                self.logger.info(f"Reached maximum reviews limit: {self.max_reviews}")
+            # Check if we've reached the limit for this specific platform
+            if self.max_reviews_per_platform and self.platform_reviews_count.get(platform, 0) >= self.max_reviews_per_platform:
+                self.logger.info(f"✓ {platform}: Reached maximum reviews per platform limit: {self.max_reviews_per_platform}")
                 return
             
-            item = self.parse_single_review(review, final_response)
+            item = self.parse_single_review(review, final_response, platform)
             if item:
-                self.reviews_count += 1
+                self.platform_reviews_count[platform] = self.platform_reviews_count.get(platform, 0) + 1
+                self.total_reviews_count += 1
                 yield item
         
-        self.logger.info(f"✓ Scraping complete. Total reviews collected: {self.reviews_count}")
+        self.logger.info(f"✓ {platform}: Scraping complete. Collected {self.platform_reviews_count.get(platform, 0)} reviews for this platform (Total across all platforms: {self.total_reviews_count})")
     
-    def parse_single_review(self, review_selector, response):
+    def parse_single_review(self, review_selector, response, platform=None):
         """Extract data from a single review"""
         
         try:
@@ -316,6 +458,26 @@ class MetacriticReviewsSpider(scrapy.Spider):
                 else:
                     category = 'negative'
             
+            # Extract platform from individual review (for cross-platform pages)
+            # First, use the platform parameter passed from parse_platform_reviews
+            review_platform = platform
+            
+            if not review_platform:
+                # Try to extract from review HTML
+                review_platform = review_selector.css('div.c-siteReviewHeader_platform span::text').get()
+            
+            if not review_platform:
+                # Try alternative selectors
+                review_platform = review_selector.css('[class*="platform"] span::text').get() or \
+                                review_selector.css('[class*="Platform"]::text').get()
+            
+            if not review_platform:
+                # Fallback to game-level platform if not found in review
+                review_platform = self.game_info.get('game_platform')
+            
+            if review_platform:
+                review_platform = review_platform.strip()
+            
             # Extract reviewer name - Modern selector
             reviewer_name = review_selector.css('a.c-siteReviewHeader_username::text').get()
             
@@ -357,7 +519,7 @@ class MetacriticReviewsSpider(scrapy.Spider):
             
             # Game information
             item['game_title'] = self.game_info.get('game_title')
-            item['game_platform'] = self.game_info.get('game_platform')
+            item['game_platform'] = review_platform  # Use review-specific platform instead of game-level platform
             item['game_url'] = self.game_info.get('game_url')
             item['game_metascore'] = self.game_info.get('game_metascore')
             item['game_release_date'] = self.game_info.get('game_release_date')
