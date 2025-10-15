@@ -25,7 +25,7 @@ import random
 class GameDiscoverer:
     """Discovers games from Metacritic browse pages"""
     
-    def __init__(self, delay=3, max_pages=None, incremental=True, split_files=1):
+    def __init__(self, delay=1, max_pages=None, incremental=True, split_files=1):
         self.base_url = "https://www.metacritic.com"
         self.delay = delay
         self.max_pages = max_pages
@@ -528,8 +528,8 @@ Examples:
                       help='Minimum metascore (0-100)')
     parser.add_argument('--max-pages', type=int, default=0,
                       help='Maximum number of pages to browse (default: 0, use 0 for unlimited)')
-    parser.add_argument('--delay', type=float, default=3.0,
-                      help='Delay between requests in seconds (default: 3.0)')
+    parser.add_argument('--delay', type=float, default=1.0,
+                      help='Delay between requests in seconds (default: 1.0)')
     parser.add_argument('--format', type=str, default='json',
                       choices=['json', 'csv', 'txt'],
                       help='Output format (default: txt)')
