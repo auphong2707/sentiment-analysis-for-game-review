@@ -325,7 +325,7 @@ class MetacriticReviewsSpider(scrapy.Spider):
                 # Scroll and load more reviews
                 previous_count = 0
                 scroll_attempts = 0
-                max_scroll_attempts = 50  # Prevent infinite loops
+                max_scroll_attempts = 200  # Prevent infinite loops
                 
                 while scroll_attempts < max_scroll_attempts:
                     # Count current reviews
