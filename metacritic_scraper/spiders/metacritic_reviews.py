@@ -27,7 +27,7 @@ class MetacriticReviewsSpider(scrapy.Spider):
         'DOWNLOAD_DELAY': 3,
         'CONCURRENT_REQUESTS': 2,
         'AUTOTHROTTLE_ENABLED': True,
-        'DOWNLOAD_TIMEOUT': 30,
+        'DOWNLOAD_TIMEOUT': 60,
         'RETRY_TIMES': 5,
     }
     
@@ -306,6 +306,8 @@ class MetacriticReviewsSpider(scrapy.Spider):
         Uses Playwright to scroll and load all reviews dynamically
         """
         
+        import asyncio
+        
         platform = response.meta.get('platform', 'Unknown')
         self.logger.info(f"Parsing reviews for {platform}: {response.url}")
         
@@ -318,21 +320,38 @@ class MetacriticReviewsSpider(scrapy.Spider):
         
         if page:
             try:
-                # Wait for reviews to load
-                await page.wait_for_selector('div.c-siteReview, div.review_content', timeout=10000)
-                self.logger.info(f"✓ Reviews loaded for {platform}")
+                # Wait for reviews to load with shorter timeout and better error handling
+                try:
+                    await page.wait_for_selector('div.c-siteReview, div.review_content', timeout=15000)
+                    self.logger.info(f"✓ Reviews loaded for {platform}")
+                except Exception as e:
+                    self.logger.warning(f"⚠ {platform}: Timeout waiting for reviews selector, will try to parse anyway: {e}")
+                    # Continue anyway - the page might have loaded but with different selectors
                 
-                # Scroll and load more reviews
+                # Scroll and load more reviews with overall timeout
                 previous_count = 0
                 scroll_attempts = 0
-                max_scroll_attempts = 200  # Prevent infinite loops
+                max_scroll_attempts = 200
+                no_change_count = 0  # Track consecutive attempts with no new reviews
+                max_time_per_platform = 300  # Reduced from 300s to 2 minutes max per platform
+                start_time = asyncio.get_event_loop().time()
                 
                 while scroll_attempts < max_scroll_attempts:
-                    # Count current reviews
-                    current_reviews = await page.query_selector_all('div.c-siteReview, div.review_content')
-                    current_count = len(current_reviews)
+                    # Check overall timeout
+                    elapsed_time = asyncio.get_event_loop().time() - start_time
+                    if elapsed_time > max_time_per_platform:
+                        self.logger.warning(f"⏱ {platform}: Timeout after {int(elapsed_time)}s, stopping scroll")
+                        break
                     
-                    self.logger.info(f"📊 {platform}: Currently loaded {current_count} reviews")
+                    # Count current reviews with error handling
+                    try:
+                        current_reviews = await page.query_selector_all('div.c-siteReview, div.review_content')
+                        current_count = len(current_reviews)
+                    except Exception as e:
+                        self.logger.warning(f"⚠ {platform}: Error counting reviews: {e}")
+                        break
+                    
+                    self.logger.info(f"📊 {platform}: Currently loaded {current_count} reviews (attempt {scroll_attempts + 1}/{max_scroll_attempts})")
                     
                     # Check if we've reached max_reviews_per_platform limit for this platform
                     if self.max_reviews_per_platform and current_count >= self.max_reviews_per_platform:
@@ -341,14 +360,22 @@ class MetacriticReviewsSpider(scrapy.Spider):
                     
                     # Check if no new reviews loaded
                     if current_count == previous_count:
-                        self.logger.info(f"✓ {platform}: No more reviews to load")
-                        break
+                        no_change_count += 1
+                        if no_change_count >= 3:  # Exit after 3 consecutive attempts with no change
+                            self.logger.info(f"✓ {platform}: No more reviews to load (no change after {no_change_count} attempts)")
+                            break
+                    else:
+                        no_change_count = 0  # Reset counter when we see new reviews
                     
                     previous_count = current_count
                     
                     # Scroll to bottom to trigger loading more reviews
-                    await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-                    await page.wait_for_timeout(2000)  # Wait for new reviews to load
+                    try:
+                        await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+                        await page.wait_for_timeout(2000)  # Wait for new reviews to load
+                    except Exception as e:
+                        self.logger.warning(f"⚠ {platform}: Error during scroll: {e}")
+                        break
                     
                     # Look for and click "Load More" button if exists
                     try:
@@ -357,15 +384,21 @@ class MetacriticReviewsSpider(scrapy.Spider):
                             self.logger.info(f"🔄 {platform}: Clicking 'Load More' button")
                             await load_more_button.click()
                             await page.wait_for_timeout(2000)
-                    except:
-                        pass  # No load more button, that's fine
+                    except Exception as e:
+                        # No load more button or error clicking it
+                        pass
                     
                     scroll_attempts += 1
                 
                 self.logger.info(f"✓ {platform}: Finished loading reviews. Total: {previous_count}")
                 
                 # Get the final HTML content
-                content = await page.content()
+                try:
+                    content = await page.content()
+                except Exception as e:
+                    self.logger.error(f"❌ {platform}: Error getting page content: {e}")
+                    await page.close()
+                    return
                 
                 # Close the page
                 await page.close()
@@ -379,9 +412,13 @@ class MetacriticReviewsSpider(scrapy.Spider):
                 )
                 
             except Exception as e:
-                self.logger.error(f"Error during Playwright interaction for {platform}: {e}")
+                self.logger.error(f"❌ {platform}: Error during Playwright interaction: {e}")
                 if page:
-                    await page.close()
+                    try:
+                        await page.close()
+                    except:
+                        pass
+                # Use the original response as fallback
                 final_response = response
         else:
             final_response = response

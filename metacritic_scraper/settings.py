@@ -31,7 +31,7 @@ CONCURRENT_REQUESTS_PER_DOMAIN = 4
 #CONCURRENT_REQUESTS_PER_IP = 16
 
 # Timeout settings
-DOWNLOAD_TIMEOUT = 30  # 30 seconds timeout for requests
+DOWNLOAD_TIMEOUT = 60  # Increased from 30 to 60 seconds for Playwright pages
 DOWNLOAD_MAXSIZE = 0  # No size limit
 DOWNLOAD_WARNSIZE = 0  # No warning size
 
