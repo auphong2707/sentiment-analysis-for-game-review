@@ -279,12 +279,18 @@ Each phase has detailed documentation:
 - ✅ Deduplication support
 
 ### Model Training
+
+**Implemented:**
 - ✅ TF-IDF + Logistic Regression baseline
 - ✅ Fast training and inference
 - ✅ Interpretable feature importance
 - ✅ Comprehensive metrics (accuracy, precision, recall, F1)
 - ✅ WandB integration for experiment tracking
 - ✅ Model saving and loading
+
+**Planned (Under Development):**
+- 📋 LSTM/GRU with Word Embeddings (context-aware sequential model)
+- 📋 Fine-tuned RoBERTa (state-of-the-art transformer model)
 
 ## 🛡️ Best Practices
 

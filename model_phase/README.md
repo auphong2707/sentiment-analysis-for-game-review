@@ -268,6 +268,43 @@ Use this baseline to compare against more complex models:
 | GPU Required | No | Yes |
 | Data Needed | Less | More |
 
+## Planned Methods (Under Development)
+
+The following advanced methods are planned for future implementation:
+
+### Method 1: Recurrent Neural Network (LSTM/GRU) with Word Embeddings
+
+**Core Idea**: The sequence of words matters.
+
+**How it Works**: 
+- Reads the review word-by-word, using Word Embeddings (like GloVe) to understand word meaning
+- The LSTM "remembers" previous words (like "not") to understand the context of later words (like "good")
+- Processes text sequentially, maintaining memory of previous context
+
+**Key Feature**: 
+- ✅ Understands context and word order
+- ✅ Reads left-to-right with memory
+- ✅ Can capture negations and context-dependent meanings
+- ⚠️ More complex than TF-IDF baseline
+- ⚠️ Requires GPU for efficient training
+
+### Method 2: Fine-Tuning RoBERTa
+
+**Core Idea**: Sentiment is best understood by looking at a word's context from both left and right simultaneously, using a deeply pre-trained model.
+
+**How it Works**: 
+- Uses RoBERTa, a model that was pre-trained on a massive amount of text
+- "Fine-tunes" this model on specific game reviews, adapting its powerful language understanding to the task
+- Processes entire review bidirectionally, understanding context from all directions
+
+**Key Feature**: 
+- ✅ RoBERTa (a variant of BERT) generally provides state-of-the-art accuracy
+- ✅ Uses bidirectional context for deep understanding
+- ✅ Highly effective at understanding nuance and complex sentiment
+- ⚠️ Computationally expensive
+- ⚠️ Requires significant GPU resources
+- ⚠️ Longer training time
+
 ## Next Steps
 
 After establishing the baseline:
@@ -275,8 +312,9 @@ After establishing the baseline:
 1. **Error Analysis**: Look at misclassified samples
 2. **Feature Engineering**: Try different n-grams, preprocessing
 3. **Hyperparameter Tuning**: Optimize max_features, max_iter
-4. **Deep Learning**: Try BERT, RoBERTa, etc.
-5. **Ensemble Methods**: Combine multiple models
+4. **Deep Learning**: Implement LSTM/GRU with word embeddings
+5. **Transformer Models**: Fine-tune RoBERTa or other BERT variants
+6. **Ensemble Methods**: Combine multiple models
 
 ## Troubleshooting
 
