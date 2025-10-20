@@ -23,3 +23,7 @@ tqdm>=4.66.1
 
 # Language Detection
 langdetect>=1.0.9
+
+# HuggingFace Integration
+datasets>=2.14.0
+huggingface-hub>=0.17.0
