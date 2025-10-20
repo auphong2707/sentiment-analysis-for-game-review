@@ -3,16 +3,21 @@ Simple script to process aggregated reviews, split into train/val/test, and uplo
 """
 import json
 import os
+import sys
 from pathlib import Path
 from datasets import Dataset, DatasetDict
 from huggingface_hub import HfApi
 from dotenv import load_dotenv
 
-# Load environment variables from .env file
-load_dotenv()
+# Get the project root directory (parent of data_prepare_phase)
+PROJECT_ROOT = Path(__file__).parent.parent
+sys.path.insert(0, str(PROJECT_ROOT))
 
-# Configuration
-DATA_DIR = Path("data/aggregated_review_english")
+# Load environment variables from .env file in project root
+load_dotenv(PROJECT_ROOT / ".env")
+
+# Configuration - paths relative to project root
+DATA_DIR = PROJECT_ROOT / "data" / "aggregated_review_english"
 HF_DATASET_NAME = os.getenv("HF_DATASET_NAME", "your-username/game-reviews-sentiment")
 TRAIN_RATIO = float(os.getenv("TRAIN_RATIO", "0.8"))
 VAL_RATIO = float(os.getenv("VAL_RATIO", "0.1"))
