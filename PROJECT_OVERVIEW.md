@@ -25,6 +25,11 @@ sentiment-analysis-for-game-review/
 │   ├── combine_data.py             # Combine review files
 │   └── prepare_and_upload_hf_dataset.py  # Upload to HuggingFace
 │
+├── model_phase/                    # Phase 3: Model Training
+│   ├── README.md
+│   ├── main_tfidf_baseline.py     # TF-IDF + Logistic Regression baseline
+│   └── results/                    # Training results
+│
 ├── data/                           # Data Storage
 │   ├── discovered_games/           # Discovered game lists
 │   ├── review_data/                # Raw scraped reviews
@@ -72,6 +77,23 @@ python data_prepare_phase/prepare_and_upload_hf_dataset.py
 
 **Output**: HuggingFace dataset (80% train, 10% validation, 10% test)
 
+### Phase 3: Model Training
+
+Train sentiment analysis models on the prepared dataset.
+
+```powershell
+# 6. Train baseline model (TF-IDF + Logistic Regression)
+python model_phase/main_tfidf_baseline.py --dataset your-username/game-reviews-sentiment
+
+# Optional: Quick test with 10% of data
+python model_phase/main_tfidf_baseline.py --dataset your-username/game-reviews-sentiment --subset 0.1
+
+# Optional: With WandB tracking
+python model_phase/main_tfidf_baseline.py --dataset your-username/game-reviews-sentiment --use_wandb
+```
+
+**Output**: Trained model with metrics and analysis
+
 ## 🚀 Quick Start
 
 ### 1. Setup Environment
@@ -102,6 +124,9 @@ python data_scrape_phase/scrape_all_games.py --input data/discovered_games/disco
 # Phase 2: Prepare Data
 python data_prepare_phase/aggregate_dataset.py
 python data_prepare_phase/prepare_and_upload_hf_dataset.py
+
+# Phase 3: Train Model
+python model_phase/main_tfidf_baseline.py --dataset your-username/game-reviews-sentiment
 ```
 
 ## 📦 Requirements
@@ -123,12 +148,15 @@ numpy>=1.26.2
 datasets>=2.14.0
 huggingface-hub>=0.17.0
 
-# Language Detection
-langdetect>=1.0.9
+# Machine Learning
+scikit-learn>=1.3.0
 
 # Utilities
 tqdm>=4.66.1
 python-dotenv>=1.0.0
+
+# Optional: Experiment tracking
+wandb>=0.16.0
 ```
 
 ## ⚙️ Configuration
@@ -250,6 +278,14 @@ Each phase has detailed documentation:
 - ✅ HuggingFace dataset upload
 - ✅ Deduplication support
 
+### Model Training
+- ✅ TF-IDF + Logistic Regression baseline
+- ✅ Fast training and inference
+- ✅ Interpretable feature importance
+- ✅ Comprehensive metrics (accuracy, precision, recall, F1)
+- ✅ WandB integration for experiment tracking
+- ✅ Model saving and loading
+
 ## 🛡️ Best Practices
 
 1. **Respect Rate Limits**: Use appropriate delays between requests
@@ -316,6 +352,17 @@ playwright install
 │       ↓                                                 │
 │  HuggingFace Dataset (80-10-10 split)                   │
 └─────────────────────────────────────────────────────────┘
+                        ↓
+┌─────────────────────────────────────────────────────────┐
+│                Phase 3: Model Training                  │
+├─────────────────────────────────────────────────────────┤
+│  main_tfidf_baseline.py                                 │
+│       ↓                                                 │
+│  Trained Model + Metrics                                │
+│  - Accuracy, Precision, Recall, F1                      │
+│  - Feature Importance Analysis                          │
+│  - Confusion Matrix                                     │
+└─────────────────────────────────────────────────────────┘
 ```
 
 ## 🎉 Result
@@ -326,11 +373,20 @@ After completing the pipeline, you'll have:
 2. **Processed English reviews** in `data/aggregated_review_english/`
 3. **Statistics and insights** from analysis
 4. **HuggingFace dataset** ready for ML training
+5. **Trained baseline model** with performance metrics
 
 Access your dataset:
 ```python
 from datasets import load_dataset
 dataset = load_dataset("your-username/game-reviews-sentiment")
+```
+
+Use your trained model:
+```python
+from model_phase.main_tfidf_baseline import TFIDFSentimentClassifier
+
+model = TFIDFSentimentClassifier.load('model_phase/results/tfidf_baseline_TIMESTAMP')
+predictions = model.predict(["This game is amazing!", "Terrible experience"])
 ```
 
 ## 📝 License
