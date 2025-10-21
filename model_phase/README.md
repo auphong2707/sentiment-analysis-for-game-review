@@ -2,6 +2,47 @@
 
 This folder contains machine learning models for sentiment analysis on game reviews.
 
+## � Quick Start (Recommended)
+
+**Run the complete automated pipeline:**
+
+```powershell
+# Windows
+.\model_phase\train_tfidf_baseline.ps1 -Dataset "username/game-reviews-sentiment"
+
+# Linux
+bash model_phase/train_tfidf_baseline.sh --dataset username/game-reviews-sentiment
+```
+
+This single command will:
+1. Run grid search on 10% data (finds best hyperparameters)
+2. Train final model on 100% data with optimal settings
+3. Upload final model to HuggingFace Hub
+
+**Time**: ~20-40 minutes | **Result**: Production-ready model on HuggingFace
+
+---
+
+## 📚 Documentation
+
+This README contains everything you need. No other documentation files needed.
+
+---
+
+## 📖 Table of Contents
+
+- [Quick Start](#-quick-start-recommended)
+- [Models](#models)
+- [Complete Pipeline](#complete-pipeline-automated)
+- [Grid Search Only](#grid-search-only)
+- [Manual Training](#manual-training)
+- [Command-Line Arguments](#command-line-arguments)
+- [Output Structure](#output)
+- [Usage Examples](#usage-examples)
+- [Troubleshooting](#troubleshooting)
+
+---
+
 ## Models
 
 ### Baseline: TF-IDF + Logistic Regression
@@ -22,49 +63,186 @@ This folder contains machine learning models for sentiment analysis on game revi
 - ✅ No GPU required
 - ✅ Small model size
 
+---
+
+## Complete Pipeline (Automated)
+
+The complete pipeline automates everything from hyperparameter search to final model deployment.
+
+### Basic Usage
+
+```powershell
+# Windows
+.\model_phase\train_tfidf_baseline.ps1 -Dataset "username/game-reviews-sentiment"
+
+# Linux
+bash model_phase/train_tfidf_baseline.sh --dataset username/game-reviews-sentiment
+```
+
+### Advanced Options
+
+```powershell
+# Windows - Full options
+.\model_phase\train_tfidf_baseline.ps1 `
+    -Dataset "username/game-reviews-sentiment" `
+    -GridsearchSubset 0.1 `
+    -FinalSubset 1.0 `
+    -NJobs 4
+
+# Linux - Full options
+bash model_phase/train_tfidf_baseline.sh \
+    --dataset username/game-reviews-sentiment \
+    --gridsearch_subset 0.1 \
+    --final_subset 1.0 \
+    --n_jobs 4
+```
+
+### What It Does
+
+1. **Grid Search** (15-30 min)
+   - Tests 27 hyperparameter combinations
+   - Uses 10% of data on validation set only
+   - Finds optimal configuration
+   - **Does NOT upload to HuggingFace** (exploration models)
+
+2. **Extract Best Config** (<1 sec)
+   - Automatically parses best hyperparameters
+   - No manual intervention needed
+
+3. **Final Training** (5-10 min)
+   - Trains on 100% data with best hyperparameters
+   - Evaluates on test set (first time!)
+   - **Uploads to HuggingFace Hub** (production model)
+
+---
+
+## Grid Search Only
+
+If you want to run just the hyperparameter search without final training:
+
+```powershell
+# Windows
+.\model_phase\train_tfidf_baseline.ps1 -SkipGridsearch:$false -Dataset "username/game-reviews-sentiment"
+
+# Linux  
+bash model_phase/train_tfidf_baseline.sh --dataset username/game-reviews-sentiment --skip_final_training
+```
+
+Note: The train_tfidf_baseline scripts now include grid search functionality inline. To run only grid search, use the -SkipGridsearch parameter or manually run only Step 1 of the script.
+
+**Grid Search Parameters Tested:**
+- `max_features`: 5000, 10000, 20000
+- `ngram_range`: (1,1), (1,2), (1,3)
+- `max_iter`: 500, 1000, 2000
+
+**Total**: 27 configurations tested automatically
+
+**Output**: Results saved to `model_phase/results/gridsearch/`
+- `best_config.txt` - Best hyperparameters found
+- `gridsearch_results.txt` - All 27 results
+- `config_*/` - Individual trained models
+
+**Important**: Grid search models are NOT uploaded to HuggingFace.
+
+---
+
+## Manual Training
+
+Train a model with specific hyperparameters:
+
+### Basic Usage
+
+```powershell
+python model_phase/main_tfidf_baseline.py --dataset username/game-reviews-sentiment
+```
+
+### With Best Hyperparameters from Grid Search
+
+After running grid search, check `best_config.txt` and use those values:
+
+```powershell
+python model_phase/main_tfidf_baseline.py \
+    --dataset username/game-reviews-sentiment \
+    --max_features 10000 \
+    --ngram_min 1 \
+    --ngram_max 2 \
+    --max_iter 1000
+```
+
+### Without HuggingFace Upload
+
+```powershell
+python model_phase/main_tfidf_baseline.py \
+    --dataset username/game-reviews-sentiment \
+    --no_upload
+```
+
+---
+
 ## Quick Start
+
+### Option A: One-Command Complete Pipeline (Recommended)
+
+Run the entire process from grid search to final training with one command:
+
+**Windows:**
+```powershell
+.\model_phase\train_tfidf_baseline.ps1 -Dataset "username/game-reviews-sentiment"
+```
+
+**Linux:**
+```bash
+bash model_phase/train_tfidf_baseline.sh --dataset username/game-reviews-sentiment
+```
+
+This automatically:
+1. Runs grid search on 10% data (validation set only)
+2. Finds best hyperparameters
+3. Trains final model on 100% data
+4. Uploads only the final model to HuggingFace
+
+### Option B: Manual Step-by-Step
+
+If you prefer manual control:
 
 ### 1. Install Dependencies
 
 ```powershell
-pip install scikit-learn datasets tqdm numpy pandas python-dotenv
+pip install scikit-learn datasets tqdm numpy pandas python-dotenv huggingface_hub
 # Optional: pip install wandb
 ```
 
-### 2. Configure Dataset (Optional)
+### 2. Configure Dataset
 
 Set your dataset in `.env` file (in project root):
 ```env
 HF_DATASET_NAME=your-username/game-reviews-sentiment
+HF_TOKEN=your_huggingface_token
 ```
 
-### 3. Train the Baseline Model
-
-**Option A: Use dataset from .env**
-```powershell
-python model_phase/main_tfidf_baseline.py
-```
-
-**Option B: Specify dataset via command line**
-```powershell
-python model_phase/main_tfidf_baseline.py --dataset your-username/game-reviews-sentiment
-```
-
-### 4. Full Options
+### 3. Run Complete Pipeline
 
 ```powershell
-python model_phase/main_tfidf_baseline.py \
-    --dataset your-username/game-reviews-sentiment \
-    --max_features 10000 \
-    --ngram_min 1 \
-    --ngram_max 2 \
-    --max_iter 1000 \
-    --subset 1.0 \
-    --output_dir model_phase/results/my_experiment \
-    --use_wandb
+# Run everything at once
+.\model_phase\train_tfidf_baseline.ps1 -Dataset "username/game-reviews-sentiment"
 ```
+
+---
 
 ## Command-Line Arguments
+
+### Complete Pipeline Script
+
+| Argument | Default | Description |
+|----------|---------|-------------|
+| `--dataset` | (required) | HuggingFace dataset name |
+| `--gridsearch_subset` | 0.1 | Subset for grid search (10%) |
+| `--final_subset` | 1.0 | Subset for final training (100%) |
+| `--output_dir` | `model_phase/results` | Base output directory |
+| `--n_jobs` | CPU-1 | Number of CPU cores to use |
+| `--skip_gridsearch` | false | Skip grid search if already done |
+
+### Main Training Script
 
 | Argument | Type | Default | Description |
 |----------|------|---------|-------------|
@@ -76,6 +254,12 @@ python model_phase/main_tfidf_baseline.py \
 | `--subset` | float | 1.0 | Fraction of data to use (0-1) |
 | `--output_dir` | str | Auto | Output directory for results |
 | `--use_wandb` | flag | False | Use WandB for experiment tracking |
+| `--n_jobs` | int | CPU-1 | Number of CPU cores to use |
+| `--upload_to_hf` | flag | True | Upload results to HuggingFace Hub |
+| `--no_upload` | flag | False | Skip HuggingFace upload |
+| `--hf_repo` | str | Auto | HuggingFace repo name for results |
+
+---
 
 ## Output
 
@@ -87,54 +271,43 @@ results/tfidf_baseline_YYYYMMDD_HHMMSS/
 ├── vectorizer.pkl            # Trained TF-IDF vectorizer
 ├── classifier.pkl            # Trained Logistic Regression model
 ├── label_encoder.pkl         # Label encoding mapping
-└── config.json              # Model configuration
+├── config.json              # Model configuration
+└── README.md                # Model card (auto-generated)
 ```
 
-### Results JSON Structure
+**HuggingFace Upload**: 
+- Grid search models: ❌ NOT uploaded (exploration only)
+- Final model: ✅ Automatically uploaded to HuggingFace Hub at `username/tfidf_baseline-results`
 
-```json
-{
-  "model_config": {
-    "max_features": 10000,
-    "ngram_range": [1, 2],
-    "max_iter": 1000
-  },
-  "training_time": 45.23,
-  "test_accuracy": 0.8542,
-  "test_precision": 0.8523,
-  "test_recall": 0.8542,
-  "test_f1": 0.8531,
-  "test_inference_time": 2.15,
-  "test_samples_per_second": 4651.16,
-  "feature_importance": {
-    "positive": {
-      "top_positive": [["amazing", 0.523], ["great", 0.491], ...],
-      "top_negative": [["bad", -0.412], ["worst", -0.387], ...]
-    },
-    ...
-  }
-}
-```
+View your uploaded model at: `https://huggingface.co/username/tfidf_baseline-results`
+
+---
 
 ## Usage Examples
 
-### Basic Training
+### Usage Examples
+
+### Complete Workflow (Recommended)
+
+```powershell
+# One command does everything!
+.\model_phase\train_tfidf_baseline.ps1 -Dataset "username/game-reviews-sentiment"
+```
+
+### Grid Search Examples
+
+```powershell
+# Quick test with small subset
+bash model_phase/train_tfidf_baseline.sh (grid search only) --dataset username/game-reviews-sentiment --subset 0.05
+```
+
+### Manual Training Examples
 
 ```powershell
 # Train with default settings
 python model_phase/main_tfidf_baseline.py --dataset username/game-reviews-sentiment
-```
 
-### Quick Experiment (10% of data)
-
-```powershell
-# Fast training for testing
-python model_phase/main_tfidf_baseline.py \
-    --dataset username/game-reviews-sentiment \
-    --subset 0.1
-```
-
-### Custom Configuration
+# Quick test (10% of data)
 
 ```powershell
 # More features, larger n-grams
@@ -153,6 +326,24 @@ python model_phase/main_tfidf_baseline.py \
 python model_phase/main_tfidf_baseline.py \
     --dataset username/game-reviews-sentiment \
     --use_wandb
+```
+
+### Skip HuggingFace Upload
+
+```powershell
+# Train without uploading to HuggingFace
+python model_phase/main_tfidf_baseline.py \
+    --dataset username/game-reviews-sentiment \
+    --no_upload
+```
+
+### Custom HuggingFace Repository
+
+```powershell
+# Upload to a specific HuggingFace repo
+python model_phase/main_tfidf_baseline.py \
+    --dataset username/game-reviews-sentiment \
+    --hf_repo username/my-custom-model-repo
 ```
 
 ## Model Details
@@ -335,6 +526,13 @@ After establishing the baseline:
 - Install: `pip install wandb`
 - Login: `wandb login`
 
+**HuggingFace upload fails:**
+- Verify `HF_TOKEN` in `.env` is set
+- Check token has write permissions
+- Ensure internet connection is stable
+
+---
+
 ## Dependencies
 
 Minimal requirements:
@@ -351,18 +549,20 @@ Optional:
 wandb>=0.16.0  # For experiment tracking
 ```
 
+---
+
 ## Project Structure
 
 ```
 model_phase/
-├── main_tfidf_baseline.py    # Main training script
-├── README.md                  # This file
-└── results/                   # Training results
-    └── tfidf_baseline_*/
-        ├── results.json
-        ├── vectorizer.pkl
-        ├── classifier.pkl
-        └── config.json
+├── main_tfidf_baseline.py       # Main training script
+├── utilities.py                 # Utility functions
+├── train_tfidf_baseline.ps1    # Complete pipeline (Windows)
+├── train_tfidf_baseline.sh     # Complete pipeline (Linux)
+├── README.md                    # This file
+└── results/                     # Training results
+    ├── tfidf_baseline_*/        # Single training runs
+    └── gridsearch/              # Grid search results
 ```
 
 ---

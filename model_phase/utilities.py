@@ -6,6 +6,9 @@ and other common operations.
 """
 
 import time
+import json
+import os
+from pathlib import Path
 import numpy as np
 from sklearn.metrics import (
     accuracy_score,
@@ -300,3 +303,276 @@ def print_training_summary(results, output_dir):
     
     if 'training_time' in results:
         print(f"\nTraining Time: {results['training_time']:.2f}s")
+
+
+def upload_results_to_hf(results, output_dir, model_name, hf_repo_name=None, hf_token=None):
+    """
+    Upload training results and model artifacts to HuggingFace Hub.
+    
+    Args:
+        results: Dictionary containing training results
+        output_dir: Directory containing model files
+        model_name: Name of the model (e.g., "tfidf_baseline")
+        hf_repo_name: HuggingFace repo name (e.g., "username/model-results")
+        hf_token: HuggingFace API token (or will use HF_TOKEN from environment)
+    
+    Returns:
+        True if upload was successful, False otherwise
+    """
+    try:
+        from huggingface_hub import HfApi, create_repo
+        from dotenv import load_dotenv
+        
+        # Load environment variables
+        load_dotenv()
+        
+        # Get token
+        if hf_token is None:
+            hf_token = os.getenv('HF_TOKEN')
+        
+        if not hf_token:
+            print("⚠️  HF_TOKEN not found. Skipping upload to HuggingFace.")
+            print("   Set HF_TOKEN in .env file to enable automatic upload.")
+            return False
+        
+        # Get or construct repo name
+        if hf_repo_name is None:
+            dataset_name = os.getenv('HF_DATASET_NAME', '')
+            if dataset_name and '/' in dataset_name:
+                username = dataset_name.split('/')[0]
+                hf_repo_name = f"{username}/{model_name}-results"
+            else:
+                print("⚠️  Cannot determine HuggingFace username. Skipping upload.")
+                print("   Provide --hf_repo or set HF_DATASET_NAME in .env")
+                return False
+        
+        print(f"\n{'='*60}")
+        print("Uploading Results to HuggingFace Hub")
+        print(f"{'='*60}")
+        print(f"Repository: {hf_repo_name}")
+        
+        # Initialize HF API
+        api = HfApi()
+        
+        # Create repo if it doesn't exist (use model type)
+        try:
+            create_repo(
+                repo_id=hf_repo_name,
+                token=hf_token,
+                repo_type="model",
+                exist_ok=True,
+                private=False
+            )
+            print(f"✓ Repository ready: {hf_repo_name}")
+        except Exception as e:
+            print(f"⚠️  Could not create/access repository: {e}")
+            return False
+        
+        output_dir = Path(output_dir)
+        
+        # Create a README with results
+        readme_content = generate_model_card(results, model_name)
+        readme_path = output_dir / "README.md"
+        with open(readme_path, 'w', encoding='utf-8') as f:
+            f.write(readme_content)
+        
+        # Upload all files from output directory
+        print("Uploading files...")
+        api.upload_folder(
+            folder_path=str(output_dir),
+            repo_id=hf_repo_name,
+            repo_type="model",
+            token=hf_token,
+            commit_message=f"Upload {model_name} results"
+        )
+        
+        print(f"✓ Results uploaded successfully!")
+        print(f"   View at: https://huggingface.co/{hf_repo_name}")
+        
+        return True
+        
+    except ImportError:
+        print("⚠️  huggingface_hub not installed. Install with: pip install huggingface_hub")
+        return False
+    except Exception as e:
+        print(f"⚠️  Error uploading to HuggingFace: {e}")
+        return False
+
+
+def generate_model_card(results, model_name):
+    """
+    Generate a model card (README) for HuggingFace.
+    
+    Args:
+        results: Dictionary containing training results
+        model_name: Name of the model
+    
+    Returns:
+        String containing the model card in Markdown format
+    """
+    from datetime import datetime
+    
+    # Extract metrics
+    test_acc = results.get('test_accuracy', 0)
+    test_f1 = results.get('test_f1', 0)
+    test_precision = results.get('test_precision', 0)
+    test_recall = results.get('test_recall', 0)
+    train_time = results.get('training_time', 0)
+    
+    config = results.get('model_config', {})
+    dataset_info = results.get('dataset_info', {})
+    
+    card = f"""---
+language: en
+tags:
+- sentiment-analysis
+- game-reviews
+- text-classification
+- {model_name}
+license: mit
+datasets:
+- game-reviews
+metrics:
+- accuracy
+- f1
+- precision
+- recall
+---
+
+# {model_name.replace('_', ' ').title()} - Game Review Sentiment Analysis
+
+## Model Description
+
+This model performs sentiment analysis on game reviews, classifying them into three categories:
+- **Positive**: Favorable reviews
+- **Mixed**: Neutral or mixed sentiment reviews
+- **Negative**: Unfavorable reviews
+
+**Model Type**: {model_name.replace('_', ' ').title()}
+
+**Training Date**: {datetime.now().strftime('%Y-%m-%d')}
+
+## Performance
+
+### Test Set Metrics
+
+| Metric | Score |
+|--------|-------|
+| Accuracy | {test_acc:.4f} |
+| F1-Score | {test_f1:.4f} |
+| Precision | {test_precision:.4f} |
+| Recall | {test_recall:.4f} |
+
+### Training Information
+
+- **Training Time**: {train_time:.2f} seconds
+- **Training Samples**: {dataset_info.get('train_size', 'N/A'):,}
+- **Validation Samples**: {dataset_info.get('val_size', 'N/A'):,}
+- **Test Samples**: {dataset_info.get('test_size', 'N/A'):,}
+
+## Model Configuration
+
+```json
+{json.dumps(config, indent=2)}
+```
+
+## Usage
+
+### Loading the Model
+
+```python
+from pathlib import Path
+import pickle
+
+# Load the model components
+model_dir = Path("path/to/model")
+
+with open(model_dir / 'vectorizer.pkl', 'rb') as f:
+    vectorizer = pickle.load(f)
+
+with open(model_dir / 'classifier.pkl', 'rb') as f:
+    classifier = pickle.load(f)
+
+with open(model_dir / 'label_encoder.pkl', 'rb') as f:
+    label_encoder = pickle.load(f)
+```
+
+### Making Predictions
+
+```python
+# Example reviews
+reviews = [
+    "This game is absolutely amazing! Best game I've played this year.",
+    "It's okay, nothing special but not terrible either.",
+    "Terrible game, waste of money and time."
+]
+
+# Transform and predict
+X = vectorizer.transform(reviews)
+predictions_encoded = classifier.predict(X)
+predictions = label_encoder.inverse_transform(predictions_encoded)
+
+print(predictions)
+# Output: ['positive', 'mixed', 'negative']
+
+# Get probabilities
+probabilities = classifier.predict_proba(X)
+print(probabilities)
+```
+
+## Per-Class Performance
+
+"""
+    
+    # Add per-class metrics if available
+    if 'test_classification_report' in results:
+        report = results['test_classification_report']
+        card += "\n| Class | Precision | Recall | F1-Score | Support |\n"
+        card += "|-------|-----------|--------|----------|----------|\n"
+        
+        for class_name in ['positive', 'mixed', 'negative']:
+            if class_name in report:
+                metrics = report[class_name]
+                card += f"| {class_name.capitalize()} | {metrics['precision']:.4f} | "
+                card += f"{metrics['recall']:.4f} | {metrics['f1-score']:.4f} | "
+                card += f"{int(metrics['support'])} |\n"
+    
+    card += """
+
+## Feature Importance
+
+The model identifies important words/phrases for each sentiment class. See `results.json` for the complete feature importance analysis.
+
+## Limitations
+
+- The model is trained specifically on game reviews and may not generalize well to other domains
+- Performance may vary on reviews with sarcasm or nuanced sentiments
+- The model treats text as bag-of-words and doesn't capture word order
+
+## Training Details
+
+This model was trained as part of a game review sentiment analysis project. For more information, see the project repository.
+
+## Files
+
+- `vectorizer.pkl`: TF-IDF vectorizer
+- `classifier.pkl`: Trained classifier
+- `label_encoder.pkl`: Label encoder for sentiment classes
+- `config.json`: Model configuration
+- `results.json`: Complete training results and metrics
+
+## Citation
+
+If you use this model, please cite:
+
+```
+@misc{game_review_sentiment,
+  author = {Game Review Sentiment Analysis Project},
+  title = {Sentiment Analysis Model for Game Reviews},
+  year = {""" + str(datetime.now().year) + """},
+  url = {https://huggingface.co/""" + model_name + """}
+}
+```
+"""
+    
+    return card

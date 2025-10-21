@@ -48,7 +48,8 @@ from model_phase.utilities import (
     log_to_wandb,
     finish_wandb,
     save_results_to_json,
-    print_training_summary
+    print_training_summary,
+    upload_results_to_hf
 )
 
 
@@ -256,7 +257,9 @@ def main(dataset_name,
          subset=1.0,
          output_dir=None,
          use_wandb=False,
-         n_jobs=None):
+         n_jobs=None,
+         upload_to_hf=True,
+         hf_repo=None):
     """
     Main training and evaluation pipeline.
     
@@ -269,6 +272,8 @@ def main(dataset_name,
         output_dir: Directory to save results
         use_wandb: Whether to use WandB for tracking
         n_jobs: Number of CPU cores to use (default: CPU count - 1)
+        upload_to_hf: Whether to upload results to HuggingFace Hub
+        hf_repo: HuggingFace repository name for results (default: auto-generated)
     """
     print("\n" + "="*60)
     print("TF-IDF + Logistic Regression Baseline")
@@ -375,6 +380,15 @@ def main(dataset_name,
     # Print summary
     print_training_summary(all_results, output_dir)
     
+    # Upload to HuggingFace if requested
+    if upload_to_hf:
+        upload_results_to_hf(
+            results=all_results,
+            output_dir=output_dir,
+            model_name="tfidf_baseline",
+            hf_repo_name=hf_repo
+        )
+    
     return all_results
 
 
@@ -435,12 +449,32 @@ if __name__ == "__main__":
         default=None,
         help='Number of CPU cores to use (default: CPU count - 1, leaving 1 for orchestration)'
     )
+    parser.add_argument(
+        '--upload_to_hf',
+        action='store_true',
+        default=True,
+        help='Upload results to HuggingFace Hub (default: True)'
+    )
+    parser.add_argument(
+        '--no_upload',
+        action='store_true',
+        help='Skip uploading results to HuggingFace Hub'
+    )
+    parser.add_argument(
+        '--hf_repo',
+        type=str,
+        default=None,
+        help='HuggingFace repository name for results (default: auto-generated from username)'
+    )
     
     args = parser.parse_args()
     
     # Validate dataset name
     if not args.dataset:
         parser.error("--dataset is required (or set HF_DATASET_NAME in .env)")
+    
+    # Determine upload setting
+    upload_to_hf = args.upload_to_hf and not args.no_upload
     
     main(
         dataset_name=args.dataset,
@@ -450,5 +484,7 @@ if __name__ == "__main__":
         subset=args.subset,
         output_dir=args.output_dir,
         use_wandb=args.use_wandb,
-        n_jobs=args.n_jobs
+        n_jobs=args.n_jobs,
+        upload_to_hf=upload_to_hf,
+        hf_repo=args.hf_repo
     )
