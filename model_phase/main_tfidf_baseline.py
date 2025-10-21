@@ -36,6 +36,7 @@ import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import LabelEncoder
+import multiprocessing
 
 # Import utilities
 from model_phase.utilities import (
@@ -60,7 +61,8 @@ class TFIDFSentimentClassifier:
                  max_features=10000,
                  ngram_range=(1, 2),
                  max_iter=1000,
-                 random_state=42):
+                 random_state=42,
+                 n_jobs=None):
         """
         Initialize the classifier.
         
@@ -69,11 +71,19 @@ class TFIDFSentimentClassifier:
             ngram_range: Range of n-grams to extract (default: unigrams and bigrams)
             max_iter: Maximum iterations for Logistic Regression
             random_state: Random seed for reproducibility
+            n_jobs: Number of CPU cores to use (default: CPU count - 1)
         """
         self.max_features = max_features
         self.ngram_range = ngram_range
         self.max_iter = max_iter
         self.random_state = random_state
+        
+        # Calculate n_jobs: use CPU count - 1 (leave one for orchestration)
+        if n_jobs is None:
+            cpu_count = multiprocessing.cpu_count()
+            self.n_jobs = max(1, cpu_count - 1)  # At least 1, but leave 1 for orchestration
+        else:
+            self.n_jobs = n_jobs
         
         # Initialize components
         self.vectorizer = TfidfVectorizer(
@@ -89,7 +99,7 @@ class TFIDFSentimentClassifier:
             random_state=random_state,
             multi_class='multinomial',
             solver='lbfgs',
-            n_jobs=-1,
+            n_jobs=self.n_jobs,
             verbose=1
         )
         
@@ -115,6 +125,7 @@ class TFIDFSentimentClassifier:
         
         print(f"\n[3/3] Training Logistic Regression...")
         print(f"  - Max iterations: {self.max_iter}")
+        print(f"  - CPU cores used: {self.n_jobs}/{multiprocessing.cpu_count()} (saving 1 for orchestration)")
         self.classifier.fit(X_tfidf, y_encoded)
         
         self.is_fitted = True
@@ -205,7 +216,8 @@ class TFIDFSentimentClassifier:
             'max_features': self.max_features,
             'ngram_range': self.ngram_range,
             'max_iter': self.max_iter,
-            'random_state': self.random_state
+            'random_state': self.random_state,
+            'n_jobs': self.n_jobs
         }
         with open(output_dir / 'config.json', 'w') as f:
             json.dump(config, f, indent=2)
@@ -243,7 +255,8 @@ def main(dataset_name,
          max_iter=1000,
          subset=1.0,
          output_dir=None,
-         use_wandb=False):
+         use_wandb=False,
+         n_jobs=None):
     """
     Main training and evaluation pipeline.
     
@@ -255,10 +268,18 @@ def main(dataset_name,
         subset: Fraction of data to use
         output_dir: Directory to save results
         use_wandb: Whether to use WandB for tracking
+        n_jobs: Number of CPU cores to use (default: CPU count - 1)
     """
     print("\n" + "="*60)
     print("TF-IDF + Logistic Regression Baseline")
     print("="*60)
+    
+    # Display CPU info
+    cpu_count = multiprocessing.cpu_count()
+    cores_to_use = max(1, cpu_count - 1) if n_jobs is None else n_jobs
+    print(f"\nSystem Info:")
+    print(f"  Total CPU cores: {cpu_count}")
+    print(f"  Cores to use: {cores_to_use} (saving 1 for orchestration)")
     
     # Setup output directory
     output_dir = setup_output_directory(output_dir, model_name="tfidf_baseline")
@@ -290,7 +311,8 @@ def main(dataset_name,
     model = TFIDFSentimentClassifier(
         max_features=max_features,
         ngram_range=ngram_range,
-        max_iter=max_iter
+        max_iter=max_iter,
+        n_jobs=n_jobs
     )
     
     # Train model
@@ -407,6 +429,12 @@ if __name__ == "__main__":
         action='store_true',
         help='Use WandB for experiment tracking'
     )
+    parser.add_argument(
+        '--n_jobs',
+        type=int,
+        default=None,
+        help='Number of CPU cores to use (default: CPU count - 1, leaving 1 for orchestration)'
+    )
     
     args = parser.parse_args()
     
@@ -421,5 +449,6 @@ if __name__ == "__main__":
         max_iter=args.max_iter,
         subset=args.subset,
         output_dir=args.output_dir,
-        use_wandb=args.use_wandb
+        use_wandb=args.use_wandb,
+        n_jobs=args.n_jobs
     )
