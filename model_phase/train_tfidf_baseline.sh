@@ -5,6 +5,14 @@
 
 set -e  # Exit on error
 
+# TF-IDF parameters (constants - not tuned)
+readonly MAX_FEATURES=20000
+readonly NGRAM_MIN=1
+readonly NGRAM_MAX=2
+
+# Grid search parameters (tune C parameter for Logistic Regression)
+readonly C_VALUES=(0.01 0.1 1.0 10.0 100.0)
+
 # Default values
 DATASET=""
 GRIDSEARCH_SUBSET=0.1
@@ -85,11 +93,6 @@ if [ "$SKIP_GRIDSEARCH" = false ]; then
     
     GRIDSEARCH_DIR="$OUTPUT_BASE_DIR/gridsearch"
     
-    # Grid search parameters
-    MAX_FEATURES_LIST=(5000 10000 20000)
-    NGRAM_CONFIGS=("1 1" "1 2" "1 3")
-    MAX_ITER_LIST=(500 1000 2000)
-    
     # Results file
     RESULTS_FILE="$GRIDSEARCH_DIR/gridsearch_results.txt"
     mkdir -p "$GRIDSEARCH_DIR"
@@ -105,40 +108,36 @@ if [ "$SKIP_GRIDSEARCH" = false ]; then
     BEST_OUTPUT_DIR=""
     
     # Counter
-    TOTAL_CONFIGS=$((${#MAX_FEATURES_LIST[@]} * ${#NGRAM_CONFIGS[@]} * ${#MAX_ITER_LIST[@]}))
+    TOTAL_CONFIGS=${#C_VALUES[@]}
     CURRENT=0
     
     echo "Total configurations to test: $TOTAL_CONFIGS"
+    echo "TF-IDF Settings (fixed): max_features=$MAX_FEATURES, ngram=($NGRAM_MIN,$NGRAM_MAX)"
     echo ""
     
     # Grid search loop
-    for MAX_FEATURES in "${MAX_FEATURES_LIST[@]}"; do
-        for NGRAM in "${NGRAM_CONFIGS[@]}"; do
-            read NGRAM_MIN NGRAM_MAX <<< "$NGRAM"
-            for MAX_ITER in "${MAX_ITER_LIST[@]}"; do
-                CURRENT=$((CURRENT + 1))
-                
-                echo "=========================================="
-                echo "Configuration $CURRENT/$TOTAL_CONFIGS"
-                echo "=========================================="
-                echo "max_features: $MAX_FEATURES"
-                echo "ngram_range: ($NGRAM_MIN, $NGRAM_MAX)"
-                echo "max_iter: $MAX_ITER"
-                echo ""
-                
-                # Create unique output directory
-                OUTPUT_DIR="$GRIDSEARCH_DIR/config_${CURRENT}_mf${MAX_FEATURES}_ng${NGRAM_MIN}${NGRAM_MAX}_mi${MAX_ITER}"
-                
-                # Build command (no HuggingFace upload during grid search)
-                CMD="python model_phase/main_tfidf_baseline.py \
-                    --dataset $DATASET \
-                    --max_features $MAX_FEATURES \
-                    --ngram_min $NGRAM_MIN \
-                    --ngram_max $NGRAM_MAX \
-                    --max_iter $MAX_ITER \
-                    --subset $GRIDSEARCH_SUBSET \
-                    --output_dir $OUTPUT_DIR \
-                    --no_upload"
+    for C_VALUE in "${C_VALUES[@]}"; do
+        CURRENT=$((CURRENT + 1))
+        
+        echo "=========================================="
+        echo "Configuration $CURRENT/$TOTAL_CONFIGS"
+        echo "=========================================="
+        echo "C (regularization): $C_VALUE"
+        echo ""
+        
+        # Create unique output directory
+        OUTPUT_DIR="$GRIDSEARCH_DIR/config_${CURRENT}_C${C_VALUE}"
+        
+        # Build command (no HuggingFace upload during grid search)
+        CMD="python model_phase/main_tfidf_baseline.py \
+            --dataset $DATASET \
+            --max_features $MAX_FEATURES \
+            --ngram_min $NGRAM_MIN \
+            --ngram_max $NGRAM_MAX \
+            --C $C_VALUE \
+            --subset $GRIDSEARCH_SUBSET \
+            --output_dir $OUTPUT_DIR \
+            --no_upload"
                 
                 # Add n_jobs if specified
                 if [ -n "$N_JOBS" ]; then
@@ -165,9 +164,7 @@ if [ "$SKIP_GRIDSEARCH" = false ]; then
                     
                     # Log to results file
                     echo "Configuration $CURRENT:" >> "$RESULTS_FILE"
-                    echo "  max_features: $MAX_FEATURES" >> "$RESULTS_FILE"
-                    echo "  ngram_range: ($NGRAM_MIN, $NGRAM_MAX)" >> "$RESULTS_FILE"
-                    echo "  max_iter: $MAX_ITER" >> "$RESULTS_FILE"
+                    echo "  C: $C_VALUE" >> "$RESULTS_FILE"
                     echo "  Validation F1: $VAL_F1" >> "$RESULTS_FILE"
                     echo "  Validation Accuracy: $VAL_ACC" >> "$RESULTS_FILE"
                     echo "  Training Time: ${TRAIN_TIME}s" >> "$RESULTS_FILE"
@@ -181,7 +178,7 @@ if [ "$SKIP_GRIDSEARCH" = false ]; then
                     
                     if [ "$IS_BETTER" = "yes" ]; then
                         BEST_F1=$VAL_F1
-                        BEST_CONFIG="max_features=$MAX_FEATURES, ngram=($NGRAM_MIN,$NGRAM_MAX), max_iter=$MAX_ITER"
+                        BEST_CONFIG="C=$C_VALUE"
                         BEST_OUTPUT_DIR=$OUTPUT_DIR
                         echo "*** NEW BEST CONFIGURATION! ***"
                         echo ""
@@ -193,8 +190,6 @@ if [ "$SKIP_GRIDSEARCH" = false ]; then
                 fi
                 
                 echo ""
-            done
-        done
     done
     
     # Save best config summary
@@ -207,18 +202,6 @@ if [ "$SKIP_GRIDSEARCH" = false ]; then
     
     echo "All results saved to: $RESULTS_FILE"
     echo "Best configuration saved to: $BEST_CONFIG_FILE"
-    
-    # Build grid search command
-    GS_CMD="bash model_phase/gridsearch_baseline.sh --dataset $DATASET --subset $GRIDSEARCH_SUBSET --output_dir $GRIDSEARCH_DIR"
-    
-    if [ -n "$N_JOBS" ]; then
-        GS_CMD="$GS_CMD --n_jobs $N_JOBS"
-    fi
-    
-    echo "Running: $GS_CMD"
-    echo ""
-    
-    eval $GS_CMD
     
     echo ""
     echo "✓ Grid search complete!"
@@ -251,17 +234,14 @@ cat "$BEST_CONFIG_FILE"
 echo ""
 
 # Extract hyperparameters from best config
-# Parse the line: "Configuration: max_features=10000, ngram=(1,2), max_iter=1000"
+# Parse the line: "Configuration: C=1.0"
 CONFIG_LINE=$(grep "Configuration:" "$BEST_CONFIG_FILE")
-MAX_FEATURES=$(echo "$CONFIG_LINE" | sed -n 's/.*max_features=\([0-9]*\).*/\1/p')
-NGRAM_MIN=$(echo "$CONFIG_LINE" | sed -n 's/.*ngram=(\([0-9]*\),\([0-9]*\)).*/\1/p')
-NGRAM_MAX=$(echo "$CONFIG_LINE" | sed -n 's/.*ngram=(\([0-9]*\),\([0-9]*\)).*/\2/p')
-MAX_ITER=$(echo "$CONFIG_LINE" | sed -n 's/.*max_iter=\([0-9]*\).*/\1/p')
+BEST_C=$(echo "$CONFIG_LINE" | sed -n 's/.*C=\([0-9.]*\).*/\1/p')
 
 echo "Extracted hyperparameters:"
-echo "  max_features: $MAX_FEATURES"
-echo "  ngram_range: ($NGRAM_MIN, $NGRAM_MAX)"
-echo "  max_iter: $MAX_ITER"
+echo "  C: $BEST_C"
+echo "  max_features: $MAX_FEATURES (fixed)"
+echo "  ngram_range: ($NGRAM_MIN, $NGRAM_MAX) (fixed)"
 echo ""
 
 # Step 3: Final Training with Best Configuration
@@ -278,7 +258,7 @@ FINAL_CMD="python model_phase/main_tfidf_baseline.py \
     --max_features $MAX_FEATURES \
     --ngram_min $NGRAM_MIN \
     --ngram_max $NGRAM_MAX \
-    --max_iter $MAX_ITER \
+    --C $BEST_C \
     --subset $FINAL_SUBSET"
 
 if [ -n "$N_JOBS" ]; then
@@ -302,9 +282,9 @@ echo "2. ✓ Final model trained with optimal configuration"
 echo "3. ✓ Results uploaded to HuggingFace Hub"
 echo ""
 echo "Best Configuration Used:"
-echo "  max_features: $MAX_FEATURES"
-echo "  ngram_range: ($NGRAM_MIN, $NGRAM_MAX)"
-echo "  max_iter: $MAX_ITER"
+echo "  C: $BEST_C"
+echo "  max_features: $MAX_FEATURES (fixed)"
+echo "  ngram_range: ($NGRAM_MIN, $NGRAM_MAX) (fixed)"
 echo ""
 echo "Check your HuggingFace profile for the uploaded model!"
 echo ""

@@ -2,6 +2,14 @@
 # Trains TF-IDF baseline model with automatic hyperparameter tuning via grid search
 # Usage: .\model_phase\train_tfidf_baseline.ps1 -Dataset "your-username/game-reviews-sentiment"
 
+# TF-IDF parameters (constants - not tuned)
+$script:MaxFeatures = 10000
+$script:NgramMin = 1
+$script:NgramMax = 2
+
+# Grid search parameters (tune C parameter for Logistic Regression)
+$script:CValues = @(0.1, 1.0, 10.0)
+
 param(
     [Parameter(Mandatory=$true)]
     [string]$Dataset,
@@ -47,11 +55,6 @@ if (-not $SkipGridsearch) {
     $GridsearchDir = Join-Path $OutputBaseDir "gridsearch"
     New-Item -ItemType Directory -Path $GridsearchDir -Force | Out-Null
     
-    # Grid search parameters
-    $MaxFeaturesList = @(5000, 10000, 20000)
-    $NgramConfigs = @(@{min=1; max=1}, @{min=1; max=2}, @{min=1; max=3})
-    $MaxIterList = @(500, 1000, 2000)
-    
     # Results file
     $ResultsFile = Join-Path $GridsearchDir "gridsearch_results.txt"
     "Grid Search Results - $(Get-Date)" | Out-File $ResultsFile
@@ -66,41 +69,38 @@ if (-not $SkipGridsearch) {
     $BestOutputDir = ""
     
     # Counter
-    $TotalConfigs = $MaxFeaturesList.Length * $NgramConfigs.Length * $MaxIterList.Length
+    $TotalConfigs = $CValues.Length
     $Current = 0
     
     Write-Host "Total configurations to test: $TotalConfigs" -ForegroundColor Yellow
+    Write-Host "TF-IDF Settings (fixed): max_features=$MaxFeatures, ngram=($NgramMin,$NgramMax)"
     Write-Host ""
     
     # Grid search loop
-    foreach ($MaxFeatures in $MaxFeaturesList) {
-        foreach ($Ngram in $NgramConfigs) {
-            foreach ($MaxIter in $MaxIterList) {
-                $Current++
-                
-                Write-Host "==========================================" -ForegroundColor Cyan
-                Write-Host "Configuration $Current/$TotalConfigs" -ForegroundColor Cyan
-                Write-Host "==========================================" -ForegroundColor Cyan
-                Write-Host "max_features: $MaxFeatures"
-                Write-Host "ngram_range: ($($Ngram.min), $($Ngram.max))"
-                Write-Host "max_iter: $MaxIter"
-                Write-Host ""
-                
-                # Create unique output directory
-                $OutputDir = Join-Path $GridsearchDir "config_${Current}_mf${MaxFeatures}_ng$($Ngram.min)$($Ngram.max)_mi${MaxIter}"
-                
-                # Build command (no HuggingFace upload during grid search)
-                $TrainArgs = @(
-                    "model_phase\main_tfidf_baseline.py",
-                    "--dataset", $Dataset,
-                    "--max_features", $MaxFeatures,
-                    "--ngram_min", $Ngram.min,
-                    "--ngram_max", $Ngram.max,
-                    "--max_iter", $MaxIter,
-                    "--subset", $GridsearchSubset,
-                    "--output_dir", $OutputDir,
-                    "--no_upload"
-                )
+    foreach ($CValue in $CValues) {
+        $Current++
+        
+        Write-Host "==========================================" -ForegroundColor Cyan
+        Write-Host "Configuration $Current/$TotalConfigs" -ForegroundColor Cyan
+        Write-Host "==========================================" -ForegroundColor Cyan
+        Write-Host "C (regularization): $CValue"
+        Write-Host ""
+        
+        # Create unique output directory
+        $OutputDir = Join-Path $GridsearchDir "config_${Current}_C${CValue}"
+        
+        # Build command (no HuggingFace upload during grid search)
+        $TrainArgs = @(
+            "model_phase\main_tfidf_baseline.py",
+            "--dataset", $Dataset,
+            "--max_features", $MaxFeatures,
+            "--ngram_min", $NgramMin,
+            "--ngram_max", $NgramMax,
+            "--C", $CValue,
+            "--subset", $GridsearchSubset,
+            "--output_dir", $OutputDir,
+            "--no_upload"
+        )
                 
                 # Add n_jobs if specified
                 if ($NJobs -gt 0) {
@@ -128,9 +128,7 @@ if (-not $SkipGridsearch) {
                     
                     # Log to results file
                     "Configuration ${Current}:" | Out-File $ResultsFile -Append
-                    "  max_features: $MaxFeatures" | Out-File $ResultsFile -Append
-                    "  ngram_range: ($($Ngram.min), $($Ngram.max))" | Out-File $ResultsFile -Append
-                    "  max_iter: $MaxIter" | Out-File $ResultsFile -Append
+                    "  C: $CValue" | Out-File $ResultsFile -Append
                     "  Validation F1: $ValF1" | Out-File $ResultsFile -Append
                     "  Validation Accuracy: $ValAcc" | Out-File $ResultsFile -Append
                     "  Training Time: ${TrainTime}s" | Out-File $ResultsFile -Append
@@ -140,7 +138,7 @@ if (-not $SkipGridsearch) {
                     # Update best if this is better
                     if ($ValF1 -gt $BestF1) {
                         $BestF1 = $ValF1
-                        $BestConfig = "max_features=$MaxFeatures, ngram=($($Ngram.min),$($Ngram.max)), max_iter=$MaxIter"
+                        $BestConfig = "C=$CValue"
                         $BestOutputDir = $OutputDir
                         Write-Host "*** NEW BEST CONFIGURATION! ***" -ForegroundColor Yellow
                         Write-Host ""
@@ -152,8 +150,6 @@ if (-not $SkipGridsearch) {
                 }
                 
                 Write-Host ""
-            }
-        }
     }
     
     # Save best config summary
@@ -166,27 +162,6 @@ if (-not $SkipGridsearch) {
     
     Write-Host "All results saved to: $ResultsFile" -ForegroundColor Green
     Write-Host "Best configuration saved to: $BestConfigFile" -ForegroundColor Green
-    
-    # Build grid search command
-    $GsArgs = @{
-        Dataset = $Dataset
-        Subset = $GridsearchSubset
-        OutputBaseDir = $GridsearchDir
-    }
-    
-    if ($NJobs -gt 0) {
-        $GsArgs.NJobs = $NJobs
-    }
-    
-    Write-Host "Running grid search..." -ForegroundColor Cyan
-    Write-Host ""
-    
-    & "$PSScriptRoot\gridsearch_baseline.ps1" @GsArgs
-    
-    if ($LASTEXITCODE -ne 0) {
-        Write-Host "Error: Grid search failed" -ForegroundColor Red
-        exit 1
-    }
     
     Write-Host ""
     Write-Host "✓ Grid search complete!" -ForegroundColor Green
@@ -222,21 +197,18 @@ Write-Host ""
 $ConfigContent = Get-Content $BestConfigFile
 $ConfigLine = $ConfigContent | Select-String "Configuration:"
 
-# Parse: "Configuration: max_features=10000, ngram=(1,2), max_iter=1000"
-if ($ConfigLine -match "max_features=(\d+).*ngram=\((\d+),(\d+)\).*max_iter=(\d+)") {
-    $MaxFeatures = [int]$matches[1]
-    $NgramMin = [int]$matches[2]
-    $NgramMax = [int]$matches[3]
-    $MaxIter = [int]$matches[4]
+# Parse: "Configuration: C=1.0"
+if ($ConfigLine -match "C=([0-9.]+)") {
+    $BestC = [double]$matches[1]
 } else {
     Write-Host "Error: Could not parse best configuration" -ForegroundColor Red
     exit 1
 }
 
 Write-Host "Extracted hyperparameters:" -ForegroundColor Yellow
-Write-Host "  max_features: $MaxFeatures"
-Write-Host "  ngram_range: ($NgramMin, $NgramMax)"
-Write-Host "  max_iter: $MaxIter"
+Write-Host "  C: $BestC"
+Write-Host "  max_features: $MaxFeatures (fixed)"
+Write-Host "  ngram_range: ($NgramMin, $NgramMax) (fixed)"
 Write-Host ""
 
 # Step 3: Final Training with Best Configuration
@@ -254,7 +226,7 @@ $FinalArgs = @(
     "--max_features", $MaxFeatures,
     "--ngram_min", $NgramMin,
     "--ngram_max", $NgramMax,
-    "--max_iter", $MaxIter,
+    "--C", $BestC,
     "--subset", $FinalSubset
 )
 
@@ -284,9 +256,9 @@ Write-Host "2. ✓ Final model trained with optimal configuration"
 Write-Host "3. ✓ Results uploaded to HuggingFace Hub"
 Write-Host ""
 Write-Host "Best Configuration Used:" -ForegroundColor Yellow
-Write-Host "  max_features: $MaxFeatures"
-Write-Host "  ngram_range: ($NgramMin, $NgramMax)"
-Write-Host "  max_iter: $MaxIter"
+Write-Host "  C: $BestC"
+Write-Host "  max_features: $MaxFeatures (fixed)"
+Write-Host "  ngram_range: ($NgramMin, $NgramMax) (fixed)"
 Write-Host ""
 Write-Host "Check your HuggingFace profile for the uploaded model!" -ForegroundColor Cyan
 Write-Host ""

@@ -61,6 +61,7 @@ class TFIDFSentimentClassifier:
     def __init__(self, 
                  max_features=10000,
                  ngram_range=(1, 2),
+                 C=1.0,
                  max_iter=1000,
                  random_state=42,
                  n_jobs=None):
@@ -70,12 +71,14 @@ class TFIDFSentimentClassifier:
         Args:
             max_features: Maximum number of features for TF-IDF
             ngram_range: Range of n-grams to extract (default: unigrams and bigrams)
+            C: Inverse of regularization strength (smaller values = stronger regularization)
             max_iter: Maximum iterations for Logistic Regression
             random_state: Random seed for reproducibility
             n_jobs: Number of CPU cores to use (default: CPU count - 1)
         """
         self.max_features = max_features
         self.ngram_range = ngram_range
+        self.C = C
         self.max_iter = max_iter
         self.random_state = random_state
         
@@ -96,6 +99,7 @@ class TFIDFSentimentClassifier:
         )
         
         self.classifier = LogisticRegression(
+            C=C,
             max_iter=max_iter,
             random_state=random_state,
             multi_class='multinomial',
@@ -253,6 +257,7 @@ class TFIDFSentimentClassifier:
 def main(dataset_name, 
          max_features=10000,
          ngram_range=(1, 2),
+         C=1.0,
          max_iter=1000,
          subset=1.0,
          output_dir=None,
@@ -267,6 +272,7 @@ def main(dataset_name,
         dataset_name: HuggingFace dataset name
         max_features: Maximum TF-IDF features
         ngram_range: N-gram range for TF-IDF
+        C: Inverse of regularization strength (smaller values = stronger regularization)
         max_iter: Max iterations for Logistic Regression
         subset: Fraction of data to use
         output_dir: Directory to save results
@@ -297,6 +303,7 @@ def main(dataset_name,
             "model": "TF-IDF + Logistic Regression",
             "max_features": max_features,
             "ngram_range": ngram_range,
+            "C": C,
             "max_iter": max_iter,
             "subset": subset
         },
@@ -316,6 +323,7 @@ def main(dataset_name,
     model = TFIDFSentimentClassifier(
         max_features=max_features,
         ngram_range=ngram_range,
+        C=C,
         max_iter=max_iter,
         n_jobs=n_jobs
     )
@@ -421,6 +429,12 @@ if __name__ == "__main__":
         help='Maximum n-gram size (default: 2)'
     )
     parser.add_argument(
+        '--C',
+        type=float,
+        default=1.0,
+        help='Inverse of regularization strength for Logistic Regression (default: 1.0, smaller = stronger regularization)'
+    )
+    parser.add_argument(
         '--max_iter',
         type=int,
         default=1000,
@@ -480,6 +494,7 @@ if __name__ == "__main__":
         dataset_name=args.dataset,
         max_features=args.max_features,
         ngram_range=(args.ngram_min, args.ngram_max),
+        C=args.C,
         max_iter=args.max_iter,
         subset=args.subset,
         output_dir=args.output_dir,

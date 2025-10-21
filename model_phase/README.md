@@ -15,11 +15,11 @@ bash model_phase/train_tfidf_baseline.sh --dataset username/game-reviews-sentime
 ```
 
 This single command will:
-1. Run grid search on 10% data (finds best hyperparameters)
+1. Run grid search on 10% data (finds best C regularization parameter)
 2. Train final model on 100% data with optimal settings
 3. Upload final model to HuggingFace Hub
 
-**Time**: ~20-40 minutes | **Result**: Production-ready model on HuggingFace
+**Time**: ~5-10 minutes | **Result**: Production-ready model on HuggingFace
 
 ---
 
@@ -99,18 +99,19 @@ bash model_phase/train_tfidf_baseline.sh \
 
 ### What It Does
 
-1. **Grid Search** (15-30 min)
-   - Tests 27 hyperparameter combinations
+1. **Grid Search** (3-5 min)
+   - Tests 3 C (regularization) values: 0.1, 1.0, 10.0
    - Uses 10% of data on validation set only
-   - Finds optimal configuration
+   - Finds optimal regularization strength
    - **Does NOT upload to HuggingFace** (exploration models)
+   - TF-IDF settings fixed: max_features=10000, ngram=(1,2)
 
 2. **Extract Best Config** (<1 sec)
-   - Automatically parses best hyperparameters
+   - Automatically parses best C parameter
    - No manual intervention needed
 
-3. **Final Training** (5-10 min)
-   - Trains on 100% data with best hyperparameters
+3. **Final Training** (2-5 min)
+   - Trains on 100% data with best C value
    - Evaluates on test set (first time!)
    - **Uploads to HuggingFace Hub** (production model)
 
@@ -131,11 +132,13 @@ bash model_phase/train_tfidf_baseline.sh --dataset username/game-reviews-sentime
 Note: The train_tfidf_baseline scripts now include grid search functionality inline. To run only grid search, use the -SkipGridsearch parameter or manually run only Step 1 of the script.
 
 **Grid Search Parameters Tested:**
-- `max_features`: 5000, 10000, 20000
-- `ngram_range`: (1,1), (1,2), (1,3)
-- `max_iter`: 500, 1000, 2000
+- `C` (regularization): 0.1, 1.0, 10.0
 
-**Total**: 27 configurations tested automatically
+**Fixed TF-IDF Parameters:**
+- `max_features`: 10000
+- `ngram_range`: (1, 2) - unigrams and bigrams
+
+**Total**: 3 configurations tested automatically
 
 **Output**: Results saved to `model_phase/results/gridsearch/`
 - `best_config.txt` - Best hyperparameters found
