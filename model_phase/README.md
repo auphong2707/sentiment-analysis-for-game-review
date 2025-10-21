@@ -7,10 +7,16 @@ This folder contains machine learning models for sentiment analysis on game revi
 **Run the complete automated pipeline:**
 
 ```powershell
-# Windows
+# Windows (uses dataset from .env by default)
+.\model_phase\train_tfidf_baseline.ps1
+
+# Or specify dataset explicitly
 .\model_phase\train_tfidf_baseline.ps1 -Dataset "username/game-reviews-sentiment"
 
-# Linux
+# Linux (uses dataset from .env by default)
+bash model_phase/train_tfidf_baseline.sh
+
+# Or specify dataset explicitly
 bash model_phase/train_tfidf_baseline.sh --dataset username/game-reviews-sentiment
 ```
 
@@ -19,7 +25,7 @@ This single command will:
 2. Train final model on 100% data with optimal settings
 3. Upload final model to HuggingFace Hub
 
-**Time**: ~5-10 minutes | **Result**: Production-ready model on HuggingFace
+**Time**: ~8-15 minutes | **Result**: Production-ready model on HuggingFace
 
 ---
 
@@ -72,11 +78,11 @@ The complete pipeline automates everything from hyperparameter search to final m
 ### Basic Usage
 
 ```powershell
-# Windows
-.\model_phase\train_tfidf_baseline.ps1 -Dataset "username/game-reviews-sentiment"
+# Windows (uses .env)
+.\model_phase\train_tfidf_baseline.ps1
 
-# Linux
-bash model_phase/train_tfidf_baseline.sh --dataset username/game-reviews-sentiment
+# Linux (uses .env)
+bash model_phase/train_tfidf_baseline.sh
 ```
 
 ### Advanced Options
@@ -99,18 +105,18 @@ bash model_phase/train_tfidf_baseline.sh \
 
 ### What It Does
 
-1. **Grid Search** (3-5 min)
-   - Tests 3 C (regularization) values: 0.1, 1.0, 10.0
+1. **Grid Search** (5-8 min)
+   - Tests 5 C (regularization) values: 0.01, 0.1, 1.0, 10.0, 100.0
    - Uses 10% of data on validation set only
    - Finds optimal regularization strength
    - **Does NOT upload to HuggingFace** (exploration models)
-   - TF-IDF settings fixed: max_features=10000, ngram=(1,2)
+   - TF-IDF settings fixed: max_features=20000, ngram=(1,2)
 
 2. **Extract Best Config** (<1 sec)
    - Automatically parses best C parameter
    - No manual intervention needed
 
-3. **Final Training** (2-5 min)
+3. **Final Training** (3-7 min)
    - Trains on 100% data with best C value
    - Evaluates on test set (first time!)
    - **Uploads to HuggingFace Hub** (production model)
@@ -129,16 +135,16 @@ If you want to run just the hyperparameter search without final training:
 bash model_phase/train_tfidf_baseline.sh --dataset username/game-reviews-sentiment --skip_final_training
 ```
 
-Note: The train_tfidf_baseline scripts now include grid search functionality inline. To run only grid search, use the -SkipGridsearch parameter or manually run only Step 1 of the script.
+Note: The train_tfidf_baseline scripts now include grid search functionality inline and read dataset from `.env` by default.
 
 **Grid Search Parameters Tested:**
-- `C` (regularization): 0.1, 1.0, 10.0
+- `C` (regularization): 0.01, 0.1, 1.0, 10.0, 100.0
 
 **Fixed TF-IDF Parameters:**
-- `max_features`: 10000
+- `max_features`: 20000
 - `ngram_range`: (1, 2) - unigrams and bigrams
 
-**Total**: 3 configurations tested automatically
+**Total**: 5 configurations tested automatically
 
 **Output**: Results saved to `model_phase/results/gridsearch/`
 - `best_config.txt` - Best hyperparameters found

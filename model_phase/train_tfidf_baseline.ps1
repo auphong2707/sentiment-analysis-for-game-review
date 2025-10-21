@@ -3,16 +3,27 @@
 # Usage: .\model_phase\train_tfidf_baseline.ps1 -Dataset "your-username/game-reviews-sentiment"
 
 # TF-IDF parameters (constants - not tuned)
-$script:MaxFeatures = 10000
+$script:MaxFeatures = 20000
 $script:NgramMin = 1
 $script:NgramMax = 2
 
 # Grid search parameters (tune C parameter for Logistic Regression)
-$script:CValues = @(0.1, 1.0, 10.0)
+$script:CValues = @(0.01, 0.1, 1.0, 10.0, 100.0)
+
+# Load dataset from .env if available
+$envFile = ".env"
+$envDataset = $null
+if (Test-Path $envFile) {
+    Get-Content $envFile | ForEach-Object {
+        if ($_ -match '^HF_DATASET_NAME=(.+)$') {
+            $envDataset = $matches[1]
+        }
+    }
+}
 
 param(
-    [Parameter(Mandatory=$true)]
-    [string]$Dataset,
+    [Parameter(Mandatory=$false)]
+    [string]$Dataset = $envDataset,
     
     [Parameter(Mandatory=$false)]
     [double]$GridsearchSubset = 0.1,
@@ -31,6 +42,14 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+
+# Validate dataset
+if (-not $Dataset) {
+    Write-Host "Error: --dataset is required (not found in .env or command line)" -ForegroundColor Red
+    Write-Host "Usage: .\model_phase\train_tfidf_baseline.ps1 -Dataset your-username/game-reviews-sentiment"
+    Write-Host "Or set HF_DATASET_NAME in .env file"
+    exit 1
+}
 
 Write-Host "============================================================" -ForegroundColor Cyan
 Write-Host "TF-IDF Baseline Model Training" -ForegroundColor Cyan

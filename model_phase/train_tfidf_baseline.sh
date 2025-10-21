@@ -13,8 +13,13 @@ readonly NGRAM_MAX=2
 # Grid search parameters (tune C parameter for Logistic Regression)
 readonly C_VALUES=(0.01 0.1 1.0 10.0 100.0)
 
+# Load dataset from .env if available
+if [ -f .env ]; then
+    export $(grep -v '^#' .env | grep HF_DATASET_NAME | xargs)
+fi
+
 # Default values
-DATASET=""
+DATASET="${HF_DATASET_NAME:-}"
 GRIDSEARCH_SUBSET=0.1
 FINAL_SUBSET=1.0
 OUTPUT_BASE_DIR="model_phase/results"
@@ -66,8 +71,9 @@ done
 
 # Validate dataset
 if [ -z "$DATASET" ]; then
-    echo "Error: --dataset is required"
+    echo "Error: --dataset is required (not found in .env or command line)"
     echo "Usage: bash train_tfidf_baseline.sh --dataset your-username/game-reviews-sentiment"
+    echo "Or set HF_DATASET_NAME in .env file"
     exit 1
 fi
 
