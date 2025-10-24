@@ -65,6 +65,11 @@ class TextDataset(Dataset):
         self.labels = label_encoder.transform(labels)
         self.tokenizer = tokenizer
         self.max_len = max_len
+        
+        # Validate labels are in expected range
+        self.num_classes = len(label_encoder.classes_)
+        if self.labels.min() < 0 or self.labels.max() >= self.num_classes:
+            raise ValueError(f"Labels must be in range [0, {self.num_classes-1}], but got range [{self.labels.min()}, {self.labels.max()}]")
 
     def __len__(self):
         return len(self.texts)
@@ -74,6 +79,10 @@ class TextDataset(Dataset):
         tokens = tokens[:self.max_len]
         pad_len = self.max_len - len(tokens)
         tokens = tokens + [0] * pad_len  # pad with zeros
+        
+        # Ensure token indices are valid for vocab
+        tokens = [min(max(0, t), len(self.tokenizer)) for t in tokens]
+        
         return torch.tensor(tokens, dtype=torch.long), torch.tensor(self.labels[idx], dtype=torch.long)
 
 
@@ -97,10 +106,12 @@ class LSTMModel(nn.Module):
        - Dense(64, ReLU) -> Dropout
        - Dense(16, ReLU) -> Dropout
 
-    4. Output: Dense(1, Sigmoid) for binary classification
+    4. Output: Dense(num_classes, Sigmoid/Softmax) for classification
     """
-    def __init__(self, vocab_size, embed_dim=128, hidden_dim=128, dropout_rate=0.5):
+    def __init__(self, vocab_size, embed_dim=128, hidden_dim=128, dropout_rate=0.5, num_classes=2):
         super().__init__()
+        
+        self.num_classes = num_classes
 
         # Embedding layer (trainable)
         self.embedding = nn.Embedding(vocab_size, embed_dim)
@@ -126,9 +137,15 @@ class LSTMModel(nn.Module):
         self.fc1 = nn.Linear(fc_in, 64)
         self.fc2 = nn.Linear(64, 64)
         self.fc3 = nn.Linear(64, 16)
-        self.output = nn.Linear(16, 1)
+        self.output = nn.Linear(16, num_classes)
         self.relu = nn.ReLU()
-        self.sigmoid = nn.Sigmoid()
+        
+        # Use appropriate activation based on number of classes
+        if num_classes == 2:
+            # For binary classification, use no activation (raw logits for BCEWithLogitsLoss)
+            self.final_activation = nn.Identity()
+        else:
+            self.final_activation = nn.LogSoftmax(dim=1)  # Use LogSoftmax for NLLLoss
 
     def forward(self, x):
         # x: [batch, seq_len]
@@ -160,7 +177,7 @@ class LSTMModel(nn.Module):
         x = self.dropout(x)
 
         out = self.output(x)
-        out = self.sigmoid(out)
+        out = self.final_activation(out)
         return out
 
 
@@ -231,6 +248,8 @@ class LSTMSentimentClassifier:
         y_encoded = self.label_encoder.fit_transform(labels)
         num_classes = len(self.label_encoder.classes_)
         print(f"  - Classes: {list(self.label_encoder.classes_)}")
+        print(f"  - Encoded labels range: {y_encoded.min()} to {y_encoded.max()}")
+        print(f"  - Number of classes: {num_classes}")
         
         print(f"\n[2/4] Building vocabulary...")
         self.tokenizer.build_vocab(texts, max_size=self.vocab_size)
@@ -257,7 +276,8 @@ class LSTMSentimentClassifier:
             vocab_size=vocab_size,
             embed_dim=self.embed_dim, 
             hidden_dim=self.hidden_dim,
-            dropout_rate=self.dropout_rate
+            dropout_rate=self.dropout_rate,
+            num_classes=num_classes
         ).to(self.device)
         
         optimizer = torch.optim.Adam(self.model.parameters(), lr=self.learning_rate)
@@ -265,12 +285,12 @@ class LSTMSentimentClassifier:
         # Use appropriate loss function based on number of classes
         if num_classes == 2:
             # Binary classification: use BCELoss (model outputs sigmoid)
-            criterion = nn.BCELoss()
-            print(f"  - Using Binary Cross Entropy Loss for binary classification")
+            criterion = nn.BCEWithLogitsLoss()  # More numerically stable
+            print(f"  - Using Binary Cross Entropy with Logits Loss for binary classification")
         else:
-            # Multi-class: use CrossEntropyLoss (need to modify model output)
-            criterion = nn.CrossEntropyLoss() 
-            print(f"  - Using Cross Entropy Loss for {num_classes}-class classification")
+            # Multi-class: use NLLLoss (model outputs log_softmax)
+            criterion = nn.NLLLoss() 
+            print(f"  - Using Negative Log Likelihood Loss for {num_classes}-class classification")
         
         # Training loop
         for epoch in range(1, self.epochs + 1):
@@ -286,11 +306,13 @@ class LSTMSentimentClassifier:
                 outputs = self.model(inputs)
                 
                 if num_classes == 2:
-                    # For binary classification, convert targets to float and reshape
-                    targets = targets.float().unsqueeze(1)
+                    # For binary classification with BCEWithLogitsLoss
+                    # Convert targets to float and ensure they're in [0, 1]
+                    targets = targets.float().clamp(0, 1).unsqueeze(1)
                     loss = criterion(outputs, targets)
                 else:
-                    # For multi-class, use as-is
+                    # For multi-class with NLLLoss, targets should be long integers
+                    targets = targets.long().clamp(0, num_classes - 1)
                     loss = criterion(outputs, targets)
                 
                 loss.backward()
@@ -331,15 +353,16 @@ class LSTMSentimentClassifier:
                 outputs = self.model(inputs)
                 
                 if num_classes == 2:
-                    # Binary classification: threshold sigmoid output at 0.5
-                    preds = (outputs > 0.5).float().squeeze().cpu().numpy()
+                    # Binary classification: apply sigmoid to logits and threshold at 0.5
+                    probs = torch.sigmoid(outputs).squeeze().cpu().numpy()
+                    preds = (probs > 0.5).astype(int)
                 else:
-                    # Multi-class: use argmax
+                    # Multi-class: use argmax on log probabilities
                     preds = outputs.argmax(dim=1).cpu().numpy()
                     
                 predictions.extend(preds)
         
-        return self.label_encoder.inverse_transform(predictions.astype(int))
+        return self.label_encoder.inverse_transform(np.array(predictions))
     
     def predict_proba(self, texts):
         """
@@ -367,13 +390,13 @@ class LSTMSentimentClassifier:
                 outputs = self.model(inputs)
                 
                 if num_classes == 2:
-                    # Binary classification: sigmoid outputs probabilities
-                    pos_probs = outputs.squeeze().cpu().numpy()
+                    # Binary classification: apply sigmoid to logits to get probabilities
+                    pos_probs = torch.sigmoid(outputs).squeeze().cpu().numpy()
                     neg_probs = 1 - pos_probs
                     probs = np.column_stack([neg_probs, pos_probs])  # [negative, positive]
                 else:
-                    # Multi-class: apply softmax
-                    probs = torch.softmax(outputs, dim=1).cpu().numpy()
+                    # Multi-class: convert log probabilities to probabilities
+                    probs = torch.exp(outputs).cpu().numpy()  # exp of log_softmax gives probabilities
                     
                 probabilities.extend(probs)
         
@@ -432,11 +455,14 @@ class LSTMSentimentClassifier:
         
         # Reconstruct model architecture
         vocab_size = len(model.tokenizer) + 1
+        # Get num_classes from saved config or infer from label_encoder
+        num_classes = config.get('num_classes', len(model.label_encoder.classes_))
         model.model = LSTMModel(
             vocab_size=vocab_size,
             embed_dim=model.embed_dim,
             hidden_dim=model.hidden_dim,
-            dropout_rate=model.dropout_rate
+            dropout_rate=model.dropout_rate,
+            num_classes=num_classes
         ).to(model.device)
         
         # Load model weights
