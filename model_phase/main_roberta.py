@@ -24,6 +24,10 @@ import argparse
 import json
 import time
 from datetime import datetime
+
+# Set environment variable to disable chat template checking BEFORE importing anything
+os.environ['HF_HUB_DISABLE_TELEMETRY'] = '1'
+
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -39,34 +43,25 @@ import torch
 from torch.utils.data import DataLoader, Dataset
 from torch.optim import AdamW
 
-# Monkey-patch to fix chat template issue in newer transformers
-# This patches the HuggingFace Hub API to ignore missing chat templates
-import warnings
-warnings.filterwarnings('ignore', message='.*additional_chat_templates.*')
+# Monkey-patch BEFORE importing transformers
+from huggingface_hub import hf_api
+from huggingface_hub.errors import RemoteEntryNotFoundError
 
-def patch_hf_hub_list_repo_tree():
-    """Patch huggingface_hub to handle missing additional_chat_templates gracefully."""
+original_list_repo_tree = hf_api.HfApi.list_repo_tree
+
+def patched_list_repo_tree(self, *args, **kwargs):
+    """Patched version that ignores missing additional_chat_templates."""
     try:
-        from huggingface_hub import hf_api
-        from huggingface_hub.errors import RemoteEntryNotFoundError
-        
-        original_list_repo_tree = hf_api.HfApi.list_repo_tree
-        
-        def patched_list_repo_tree(self, *args, **kwargs):
-            try:
-                return original_list_repo_tree(self, *args, **kwargs)
-            except RemoteEntryNotFoundError as e:
-                # If it's the chat templates error, return empty iterator
-                if 'additional_chat_templates' in str(e):
-                    return iter([])
-                raise
-        
-        hf_api.HfApi.list_repo_tree = patched_list_repo_tree
-    except Exception:
-        pass
+        return original_list_repo_tree(self, *args, **kwargs)
+    except RemoteEntryNotFoundError as e:
+        # If it's the chat templates error, return empty iterator
+        if 'additional_chat_templates' in str(e):
+            return iter([])
+        raise
 
-patch_hf_hub_list_repo_tree()
+hf_api.HfApi.list_repo_tree = patched_list_repo_tree
 
+# Now safe to import transformers
 from transformers import (
     AutoTokenizer,
     RobertaForSequenceClassification,
