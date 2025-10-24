@@ -38,6 +38,19 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader, Dataset
 from torch.optim import AdamW
+
+# Monkey-patch to fix chat template issue in newer transformers
+import transformers.utils.hub as hub_utils
+original_list_repo_templates = getattr(hub_utils, 'list_repo_templates', None)
+if original_list_repo_templates is not None:
+    def patched_list_repo_templates(*args, **kwargs):
+        try:
+            return original_list_repo_templates(*args, **kwargs)
+        except Exception:
+            # Return empty list if chat templates are not found
+            return []
+    hub_utils.list_repo_templates = patched_list_repo_templates
+
 from transformers import (
     AutoTokenizer,
     RobertaForSequenceClassification,
@@ -155,22 +168,10 @@ class RoBERTaSentimentClassifier:
         # Initialize tokenizer and model
         print(f"\nLoading tokenizer and model: {model_name}")
         
-        # Try to load tokenizer with workaround for chat template issue
-        try:
-            self.tokenizer = AutoTokenizer.from_pretrained(
-                model_name, 
-                use_fast=True,
-                trust_remote_code=False
-            )
-        except Exception as e:
-            # Fallback: If there's an issue with chat templates, try without checking
-            print(f"Warning: Using fallback tokenizer loading due to: {type(e).__name__}")
-            # Use the old model name format if it's the new FacebookAI one
-            model_name_fallback = model_name.replace("FacebookAI/", "")
-            self.tokenizer = AutoTokenizer.from_pretrained(
-                model_name_fallback, 
-                use_fast=True
-            )
+        self.tokenizer = AutoTokenizer.from_pretrained(
+            model_name, 
+            use_fast=True
+        )
         
         self.model = None  # Will be initialized when we know label mapping
         self.label2id = None
