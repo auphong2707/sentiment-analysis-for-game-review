@@ -39,7 +39,7 @@ import torch
 from torch.utils.data import DataLoader, Dataset
 from torch.optim import AdamW
 from transformers import (
-    RobertaTokenizer,
+    AutoTokenizer,
     RobertaForSequenceClassification,
     get_linear_schedule_with_warmup
 )
@@ -154,7 +154,7 @@ class RoBERTaSentimentClassifier:
         
         # Initialize tokenizer and model
         print(f"\nLoading tokenizer and model: {model_name}")
-        self.tokenizer = RobertaTokenizer.from_pretrained(model_name)
+        self.tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=True)
         self.model = None  # Will be initialized when we know label mapping
         self.label2id = None
         self.id2label = None
@@ -483,7 +483,7 @@ class RoBERTaSentimentClassifier:
             weight_decay=config['weight_decay']
         )
         
-        model.tokenizer = RobertaTokenizer.from_pretrained(output_dir / 'tokenizer')
+        model.tokenizer = AutoTokenizer.from_pretrained(output_dir / 'tokenizer', use_fast=True)
         model.model = RobertaForSequenceClassification.from_pretrained(output_dir / 'model')
         model.model.to(model.device)
         model.label2id = config['label2id']
