@@ -40,16 +40,32 @@ from torch.utils.data import DataLoader, Dataset
 from torch.optim import AdamW
 
 # Monkey-patch to fix chat template issue in newer transformers
-import transformers.utils.hub as hub_utils
-original_list_repo_templates = getattr(hub_utils, 'list_repo_templates', None)
-if original_list_repo_templates is not None:
-    def patched_list_repo_templates(*args, **kwargs):
-        try:
-            return original_list_repo_templates(*args, **kwargs)
-        except Exception:
-            # Return empty list if chat templates are not found
-            return []
-    hub_utils.list_repo_templates = patched_list_repo_templates
+# This patches the HuggingFace Hub API to ignore missing chat templates
+import warnings
+warnings.filterwarnings('ignore', message='.*additional_chat_templates.*')
+
+def patch_hf_hub_list_repo_tree():
+    """Patch huggingface_hub to handle missing additional_chat_templates gracefully."""
+    try:
+        from huggingface_hub import hf_api
+        from huggingface_hub.errors import RemoteEntryNotFoundError
+        
+        original_list_repo_tree = hf_api.HfApi.list_repo_tree
+        
+        def patched_list_repo_tree(self, *args, **kwargs):
+            try:
+                return original_list_repo_tree(self, *args, **kwargs)
+            except RemoteEntryNotFoundError as e:
+                # If it's the chat templates error, return empty iterator
+                if 'additional_chat_templates' in str(e):
+                    return iter([])
+                raise
+        
+        hf_api.HfApi.list_repo_tree = patched_list_repo_tree
+    except Exception:
+        pass
+
+patch_hf_hub_list_repo_tree()
 
 from transformers import (
     AutoTokenizer,
