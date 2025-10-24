@@ -5,13 +5,16 @@
 
 set -e  # Exit on error
 
-# LSTM parameters (constants - not tuned)
+# LSTM parameters (constants - fixed according to paper architecture)
 readonly EMBED_DIM=100
+readonly HIDDEN_DIM=128
 readonly BATCH_SIZE=64
-readonly EPOCHS=5
+readonly EPOCHS=10
+readonly DROPOUT_RATE=0.5
+readonly DENSE_UNITS=128
 
-# Grid search parameters (tune hidden_dim parameter for LSTM)
-readonly HIDDEN_DIM_VALUES=(64 128 256 512)
+# Grid search parameters (tune learning_rate for optimizer)
+readonly LEARNING_RATE_VALUES=(1e-5 5e-5 1e-4 5e-4 1e-3 5e-3)
 
 # Load dataset from .env if available
 if [ -f .env ]; then
@@ -21,8 +24,9 @@ fi
 # Default values
 DATASET="${HF_DATASET_NAME:-}"
 GRIDSEARCH_SUBSET=0.1
-FINAL_SUBSET=0.1
+FINAL_SUBSET=1.0
 OUTPUT_BASE_DIR="model_phase/results"
+N_JOBS=""
 SKIP_GRIDSEARCH=false
 
 # Parse arguments
@@ -44,6 +48,10 @@ while [[ $# -gt 0 ]]; do
             OUTPUT_BASE_DIR="$2"
             shift 2
             ;;
+        --n_jobs)
+            N_JOBS="$2"
+            shift 2
+            ;;
         --skip_gridsearch)
             SKIP_GRIDSEARCH=true
             shift
@@ -57,6 +65,7 @@ while [[ $# -gt 0 ]]; do
             echo "  --gridsearch_subset FLOAT    Subset for grid search (default: 0.1)"
             echo "  --final_subset FLOAT         Subset for final training (default: 1.0)"
             echo "  --output_dir DIR             Base output directory (default: model_phase/results)"
+            echo "  --n_jobs N                   Number of CPU cores to use"
             echo "  --skip_gridsearch            Skip grid search and use provided hyperparameters"
             exit 1
             ;;
@@ -78,6 +87,9 @@ echo "Dataset: $DATASET"
 echo "Grid Search Subset: $GRIDSEARCH_SUBSET"
 echo "Final Training Subset: $FINAL_SUBSET"
 echo "Output Directory: $OUTPUT_BASE_DIR"
+if [ -n "$N_JOBS" ]; then
+    echo "CPU Cores: $N_JOBS"
+fi
 echo ""
 
 # Step 1: Grid Search (if not skipped)
@@ -105,40 +117,46 @@ if [ "$SKIP_GRIDSEARCH" = false ]; then
     BEST_OUTPUT_DIR=""
     
     # Counter
-    TOTAL_CONFIGS=${#HIDDEN_DIM_VALUES[@]}
+    TOTAL_CONFIGS=${#LEARNING_RATE_VALUES[@]}
     CURRENT=0
     
     echo "Total configurations to test: $TOTAL_CONFIGS"
-    echo "LSTM Settings (fixed): embed_dim=$EMBED_DIM, batch_size=$BATCH_SIZE, epochs=$EPOCHS"
+    echo "LSTM Settings (fixed): embed_dim=$EMBED_DIM, hidden_dim=$HIDDEN_DIM, batch_size=$BATCH_SIZE, epochs=$EPOCHS, dropout_rate=$DROPOUT_RATE"
     echo ""
     
     # Grid search loop
-    for HIDDEN_DIM in "${HIDDEN_DIM_VALUES[@]}"; do
+    for LEARNING_RATE in "${LEARNING_RATE_VALUES[@]}"; do
         CURRENT=$((CURRENT + 1))
         
         echo "=========================================="
         echo "Configuration $CURRENT/$TOTAL_CONFIGS"
         echo "=========================================="
-        echo "Hidden Dimension: $HIDDEN_DIM"
+        echo "Learning Rate: $LEARNING_RATE"
         echo ""
         
         # Create unique output directory
-        OUTPUT_DIR="$GRIDSEARCH_DIR/config_${CURRENT}_hidden${HIDDEN_DIM}"
+        OUTPUT_DIR="$GRIDSEARCH_DIR/config_${CURRENT}_lr${LEARNING_RATE}"
         
         # Build command (no HuggingFace upload during grid search)
         CMD="python model_phase/main_LSTM_baseline.py \
             --dataset $DATASET \
             --embed_dim $EMBED_DIM \
             --hidden_dim $HIDDEN_DIM \
+            --learning_rate $LEARNING_RATE \
             --batch_size $BATCH_SIZE \
             --epochs $EPOCHS \
             --subset $GRIDSEARCH_SUBSET \
             --output_dir $OUTPUT_DIR \
             --no_upload"
                 
-        # Run training
-        echo "Running: $CMD"
-        eval $CMD
+                # Add n_jobs if specified
+                if [ -n "$N_JOBS" ]; then
+                    CMD="$CMD --n_jobs $N_JOBS"
+                fi
+                
+                # Run training
+                echo "Running: $CMD"
+                eval $CMD
         
         # Extract validation F1 score from results.json
         RESULTS_JSON="$OUTPUT_DIR/results.json"
@@ -156,7 +174,7 @@ if [ "$SKIP_GRIDSEARCH" = false ]; then
             
             # Log to results file
             echo "Configuration $CURRENT:" >> "$RESULTS_FILE"
-            echo "  Hidden Dim: $HIDDEN_DIM" >> "$RESULTS_FILE"
+            echo "  Learning Rate: $LEARNING_RATE" >> "$RESULTS_FILE"
             echo "  Validation F1: $VAL_F1" >> "$RESULTS_FILE"
             echo "  Validation Accuracy: $VAL_ACC" >> "$RESULTS_FILE"
             echo "  Training Time: ${TRAIN_TIME}s" >> "$RESULTS_FILE"
@@ -170,7 +188,7 @@ if [ "$SKIP_GRIDSEARCH" = false ]; then
             
             if [ "$IS_BETTER" = "yes" ]; then
                 BEST_F1=$VAL_F1
-                BEST_CONFIG="hidden_dim=$HIDDEN_DIM"
+                BEST_CONFIG="learning_rate=$LEARNING_RATE"
                 BEST_OUTPUT_DIR=$OUTPUT_DIR
                 echo "*** NEW BEST CONFIGURATION! ***"
                 echo ""
@@ -226,12 +244,13 @@ cat "$BEST_CONFIG_FILE"
 echo ""
 
 # Extract hyperparameters from best config
-# Parse the line: "Configuration: hidden_dim=128"
+# Parse the line: "Configuration: learning_rate=0.001"
 CONFIG_LINE=$(grep "Configuration:" "$BEST_CONFIG_FILE")
-BEST_HIDDEN_DIM=$(echo "$CONFIG_LINE" | sed -n 's/.*hidden_dim=\([0-9]*\).*/\1/p')
+BEST_LEARNING_RATE=$(echo "$CONFIG_LINE" | sed -n 's/.*learning_rate=\([0-9.]*\).*/\1/p')
 
 echo "Extracted hyperparameters:"
-echo "  Hidden Dim: $BEST_HIDDEN_DIM"
+echo "  Learning Rate: $BEST_LEARNING_RATE"
+echo "  hidden_dim: $HIDDEN_DIM (fixed)"
 echo "  embed_dim: $EMBED_DIM (fixed)"
 echo "  batch_size: $BATCH_SIZE (fixed)"
 echo "  epochs: $EPOCHS (fixed)"
@@ -249,10 +268,16 @@ echo ""
 FINAL_CMD="python model_phase/main_LSTM_baseline.py \
     --dataset $DATASET \
     --embed_dim $EMBED_DIM \
-    --hidden_dim $BEST_HIDDEN_DIM \
+    --hidden_dim $HIDDEN_DIM \
+    --learning_rate $BEST_LEARNING_RATE \
     --batch_size $BATCH_SIZE \
     --epochs $EPOCHS \
     --subset $FINAL_SUBSET"
+
+# Add n_jobs parameter if specified
+if [ -n "$N_JOBS" ]; then
+    FINAL_CMD="$FINAL_CMD --n_jobs $N_JOBS"
+fi
 
 echo "Running: $FINAL_CMD"
 echo ""
@@ -271,7 +296,8 @@ echo "2. ✓ Final model trained with optimal configuration"
 echo "3. ✓ Results uploaded to HuggingFace Hub"
 echo ""
 echo "Best Configuration Used:"
-echo "  Hidden Dim: $BEST_HIDDEN_DIM"
+echo "  Learning Rate: $BEST_LEARNING_RATE"
+echo "  hidden_dim: $HIDDEN_DIM (fixed)"
 echo "  embed_dim: $EMBED_DIM (fixed)"
 echo "  batch_size: $BATCH_SIZE (fixed)"
 echo "  epochs: $EPOCHS (fixed)"
