@@ -154,7 +154,24 @@ class RoBERTaSentimentClassifier:
         
         # Initialize tokenizer and model
         print(f"\nLoading tokenizer and model: {model_name}")
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=True)
+        
+        # Try to load tokenizer with workaround for chat template issue
+        try:
+            self.tokenizer = AutoTokenizer.from_pretrained(
+                model_name, 
+                use_fast=True,
+                trust_remote_code=False
+            )
+        except Exception as e:
+            # Fallback: If there's an issue with chat templates, try without checking
+            print(f"Warning: Using fallback tokenizer loading due to: {type(e).__name__}")
+            # Use the old model name format if it's the new FacebookAI one
+            model_name_fallback = model_name.replace("FacebookAI/", "")
+            self.tokenizer = AutoTokenizer.from_pretrained(
+                model_name_fallback, 
+                use_fast=True
+            )
+        
         self.model = None  # Will be initialized when we know label mapping
         self.label2id = None
         self.id2label = None
@@ -164,8 +181,11 @@ class RoBERTaSentimentClassifier:
         self.label2id = label2id
         self.id2label = id2label
         
+        # Use fallback model name if needed
+        model_name_to_load = self.model_name.replace("FacebookAI/", "")
+        
         self.model = RobertaForSequenceClassification.from_pretrained(
-            self.model_name,
+            model_name_to_load,
             num_labels=self.num_labels,
             label2id=label2id,
             id2label=id2label
