@@ -45,6 +45,7 @@ from tqdm import tqdm
 from model_phase.utilities import (
     load_dataset_from_hf,
     evaluate_classifier,
+    print_feature_importance,
     setup_output_directory,
     init_wandb_if_available,
     log_to_wandb,
@@ -80,65 +81,129 @@ class TextDataset(Dataset):
 # LSTM Model Architecture
 # ====================================================
 class LSTMModel(nn.Module):
-    def __init__(self, vocab_size, embed_dim, hidden_dim, num_classes, num_layers=1, bidirectional=True, dropout=0.3):
+    """
+    Revised LSTM Model Architecture requested by user:
+
+    1. Embedding Layer:
+       - vocab_size (provided)
+       - embedding dim = 128 (trainable)
+
+    2. Two stacked Bidirectional LSTM layers:
+       - each LSTM has hidden_dim units per direction (128)
+       - dropout between layers handled by LSTM dropout param
+
+    3. Fully connected layers:
+       - Dense(64, ReLU) -> Dropout
+       - Dense(64, ReLU) -> Dropout
+       - Dense(16, ReLU) -> Dropout
+
+    4. Output: Dense(1, Sigmoid) for binary classification
+    """
+    def __init__(self, vocab_size, embed_dim=128, hidden_dim=128, dropout_rate=0.5):
         super().__init__()
+
+        # Embedding layer (trainable)
         self.embedding = nn.Embedding(vocab_size, embed_dim)
+
+        # Two stacked bidirectional LSTM layers. Setting num_layers=2 and
+        # bidirectional=True results in 2 layers with forward/backward directions.
+        # dropout parameter applies between LSTM layers when num_layers > 1.
         self.lstm = nn.LSTM(
-            embed_dim,
-            hidden_dim,
-            num_layers=num_layers,
+            input_size=embed_dim,
+            hidden_size=hidden_dim,
+            num_layers=2,
             batch_first=True,
-            bidirectional=bidirectional,
-            dropout=dropout if num_layers > 1 else 0.0
+            bidirectional=True,
+            dropout=dropout_rate
         )
-        self.fc = nn.Linear(hidden_dim * (2 if bidirectional else 1), num_classes)
-        self.dropout = nn.Dropout(dropout)
+
+        # Dropout used between dense layers
+        self.dropout = nn.Dropout(dropout_rate)
+
+        # Fully connected classification head
+        # The LSTM final hidden for bidirectional last layer will be hidden_dim * 2
+        fc_in = hidden_dim * 2
+        self.fc1 = nn.Linear(fc_in, 64)
+        self.fc2 = nn.Linear(64, 64)
+        self.fc3 = nn.Linear(64, 16)
+        self.output = nn.Linear(16, 1)
+        self.relu = nn.ReLU()
+        self.sigmoid = nn.Sigmoid()
 
     def forward(self, x):
-        emb = self.embedding(x)
-        output, (h_n, _) = self.lstm(emb)
-        if self.lstm.bidirectional:
-            hidden = torch.cat((h_n[-2], h_n[-1]), dim=1)
-        else:
-            hidden = h_n[-1]
-        hidden = self.dropout(hidden)
-        return self.fc(hidden)
+        # x: [batch, seq_len]
+        emb = self.embedding(x)  # [batch, seq_len, embed_dim]
+
+        # LSTM output: lstm_out [batch, seq_len, hidden_dim * num_directions]
+        # h_n: [num_layers * num_directions, batch, hidden_dim]
+        lstm_out, (h_n, c_n) = self.lstm(emb)
+
+        # Get the last layer's forward and backward hidden states and concatenate
+        # For num_layers=2 and bidirectional=True:
+        # h_n shape = (4, batch, hidden_dim) -> layers: [l0_f, l0_b, l1_f, l1_b]
+        # We want the top layer (l1_f and l1_b) => indices -2 and -1
+        forward_h = h_n[-2]
+        backward_h = h_n[-1]
+        hidden = torch.cat((forward_h, backward_h), dim=1)  # [batch, hidden_dim*2]
+
+        # Fully connected head with dropout between layers
+        x = self.fc1(hidden)
+        x = self.relu(x)
+        x = self.dropout(x)
+
+        x = self.fc2(x)
+        x = self.relu(x)
+        x = self.dropout(x)
+
+        x = self.fc3(x)
+        x = self.relu(x)
+        x = self.dropout(x)
+
+        out = self.output(x)
+        out = self.sigmoid(out)
+        return out
 
 
 class LSTMSentimentClassifier:
     """
-    LSTM-based sentiment classifier with word embeddings.
+    LSTM-based sentiment classifier following paper architecture.
     """
     
     def __init__(self, 
-                 embed_dim=100,
+                 embed_dim=128,
                  hidden_dim=128,
-                 batch_size=64,
+                 learning_rate=1e-3,
+                 batch_size=128,
                  epochs=5,
                  max_len=200,
-                 vocab_size=20000,
-                 learning_rate=1e-3,
+                 vocab_size=73738,
+                 dropout_rate=0.5,
+                 fc_sizes=(64, 64, 16),
                  random_state=42):
         """
-        Initialize the LSTM classifier.
+        Initialize the LSTM classifier following paper specifications.
         
         Args:
-            embed_dim: Embedding dimension
-            hidden_dim: LSTM hidden dimension  
-            batch_size: Batch size for training
-            epochs: Number of training epochs
-            max_len: Maximum sequence length
-            vocab_size: Maximum vocabulary size
-            learning_rate: Learning rate for optimizer
+            embed_dim: Embedding dimension (default: 128)
+            hidden_dim: LSTM hidden dimension (128 per direction)
+            learning_rate: Learning rate for Adam optimizer (default: 0.001)
+            batch_size: Batch size for training (default: 128)
+            epochs: Number of training epochs (default: 5)
+            max_len: Maximum sequence length (200)
+            vocab_size: Maximum vocabulary size (default: 73738)
+            dropout_rate: Dropout rate (0.5)
+            fc_sizes: Tuple of fully-connected layer sizes (64,64,16)
             random_state: Random seed for reproducibility
         """
         self.embed_dim = embed_dim
         self.hidden_dim = hidden_dim
+        self.learning_rate = learning_rate
         self.batch_size = batch_size
         self.epochs = epochs
         self.max_len = max_len
         self.vocab_size = vocab_size
-        self.learning_rate = learning_rate
+        self.dropout_rate = dropout_rate
+        self.fc_sizes = tuple(fc_sizes)
         self.random_state = random_state
         
         # Set random seeds
@@ -182,19 +247,30 @@ class LSTMSentimentClassifier:
         print(f"  - Vocab size: {vocab_size}")
         print(f"  - Embed dim: {self.embed_dim}")
         print(f"  - Hidden dim: {self.hidden_dim}")
+        print(f"  - Dropout rate: {self.dropout_rate}")
+        print(f"  - FC sizes: {self.fc_sizes}")
         print(f"  - Epochs: {self.epochs}")
         print(f"  - Device: {self.device}")
         
-        # Initialize model
+        # Initialize model with new architecture
         self.model = LSTMModel(
             vocab_size=vocab_size,
             embed_dim=self.embed_dim, 
             hidden_dim=self.hidden_dim,
-            num_classes=num_classes
+            dropout_rate=self.dropout_rate
         ).to(self.device)
         
         optimizer = torch.optim.Adam(self.model.parameters(), lr=self.learning_rate)
-        criterion = nn.CrossEntropyLoss()
+        
+        # Use appropriate loss function based on number of classes
+        if num_classes == 2:
+            # Binary classification: use BCELoss (model outputs sigmoid)
+            criterion = nn.BCELoss()
+            print(f"  - Using Binary Cross Entropy Loss for binary classification")
+        else:
+            # Multi-class: use CrossEntropyLoss (need to modify model output)
+            criterion = nn.CrossEntropyLoss() 
+            print(f"  - Using Cross Entropy Loss for {num_classes}-class classification")
         
         # Training loop
         for epoch in range(1, self.epochs + 1):
@@ -203,11 +279,20 @@ class LSTMSentimentClassifier:
             
             progress_bar = tqdm(dataloader, desc=f"Epoch {epoch}/{self.epochs}")
             for inputs, targets in progress_bar:
-                inputs, targets = inputs.to(self.device), targets.to(self.device)
+                inputs = inputs.to(self.device)
+                targets = targets.to(self.device)
                 
                 optimizer.zero_grad()
                 outputs = self.model(inputs)
-                loss = criterion(outputs, targets)
+                
+                if num_classes == 2:
+                    # For binary classification, convert targets to float and reshape
+                    targets = targets.float().unsqueeze(1)
+                    loss = criterion(outputs, targets)
+                else:
+                    # For multi-class, use as-is
+                    loss = criterion(outputs, targets)
+                
                 loss.backward()
                 optimizer.step()
                 
@@ -238,15 +323,23 @@ class LSTMSentimentClassifier:
         
         self.model.eval()
         predictions = []
+        num_classes = len(self.label_encoder.classes_)
         
         with torch.no_grad():
             for inputs, _ in dataloader:
                 inputs = inputs.to(self.device)
                 outputs = self.model(inputs)
-                preds = outputs.argmax(dim=1)
-                predictions.extend(preds.cpu().numpy())
+                
+                if num_classes == 2:
+                    # Binary classification: threshold sigmoid output at 0.5
+                    preds = (outputs > 0.5).float().squeeze().cpu().numpy()
+                else:
+                    # Multi-class: use argmax
+                    preds = outputs.argmax(dim=1).cpu().numpy()
+                    
+                predictions.extend(preds)
         
-        return self.label_encoder.inverse_transform(predictions)
+        return self.label_encoder.inverse_transform(predictions.astype(int))
     
     def predict_proba(self, texts):
         """
@@ -266,13 +359,23 @@ class LSTMSentimentClassifier:
         
         self.model.eval()
         probabilities = []
+        num_classes = len(self.label_encoder.classes_)
         
         with torch.no_grad():
             for inputs, _ in dataloader:
                 inputs = inputs.to(self.device)
                 outputs = self.model(inputs)
-                probs = torch.softmax(outputs, dim=1)
-                probabilities.extend(probs.cpu().numpy())
+                
+                if num_classes == 2:
+                    # Binary classification: sigmoid outputs probabilities
+                    pos_probs = outputs.squeeze().cpu().numpy()
+                    neg_probs = 1 - pos_probs
+                    probs = np.column_stack([neg_probs, pos_probs])  # [negative, positive]
+                else:
+                    # Multi-class: apply softmax
+                    probs = torch.softmax(outputs, dim=1).cpu().numpy()
+                    
+                probabilities.extend(probs)
         
         return np.array(probabilities)
     
@@ -296,11 +399,13 @@ class LSTMSentimentClassifier:
         config = {
             'embed_dim': self.embed_dim,
             'hidden_dim': self.hidden_dim,
+            'learning_rate': self.learning_rate,
             'batch_size': self.batch_size,
             'epochs': self.epochs,
             'max_len': self.max_len,
             'vocab_size': self.vocab_size,
-            'learning_rate': self.learning_rate,
+            'dropout_rate': self.dropout_rate,
+            'fc_sizes': list(self.fc_sizes),
             'random_state': self.random_state,
             'num_classes': len(self.label_encoder.classes_)
         }
@@ -327,12 +432,11 @@ class LSTMSentimentClassifier:
         
         # Reconstruct model architecture
         vocab_size = len(model.tokenizer) + 1
-        num_classes = config['num_classes']
         model.model = LSTMModel(
             vocab_size=vocab_size,
             embed_dim=model.embed_dim,
             hidden_dim=model.hidden_dim,
-            num_classes=num_classes
+            dropout_rate=model.dropout_rate
         ).to(model.device)
         
         # Load model weights
@@ -369,16 +473,19 @@ class SimpleTokenizer:
 
 
 def main(dataset_name, 
-         embed_dim=100,
+         embed_dim=128,
          hidden_dim=128,
-         batch_size=64,
+         learning_rate=1e-3,
+         batch_size=128,
          epochs=5,
          max_len=200,
-         vocab_size=20000,
-         learning_rate=1e-3,
+         vocab_size=73738,
+         dropout_rate=0.5,
+         fc_sizes=(64,64,16),
          subset=1.0,
          output_dir=None,
          use_wandb=False,
+         n_jobs=None,
          upload_to_hf=True,
          hf_repo=None):
     """
@@ -386,16 +493,19 @@ def main(dataset_name,
     
     Args:
         dataset_name: HuggingFace dataset name
-        embed_dim: Embedding dimension
-        hidden_dim: LSTM hidden dimension
-        batch_size: Batch size for training
-        epochs: Number of training epochs
-        max_len: Maximum sequence length
-        vocab_size: Maximum vocabulary size
-        learning_rate: Learning rate for optimizer
+        embed_dim: Embedding dimension (default: 128)
+        hidden_dim: LSTM hidden dimension (128 per direction)
+        learning_rate: Learning rate for Adam optimizer (default: 0.001)
+        batch_size: Batch size for training (default: 128)
+        epochs: Number of training epochs (default: 5)
+        max_len: Maximum sequence length (200)
+        vocab_size: Maximum vocabulary size (default: 73738)
+        dropout_rate: Dropout rate (0.5)
+        fc_sizes: Fully-connected layer sizes (64,64,16)
         subset: Fraction of data to use
         output_dir: Directory to save results
         use_wandb: Whether to use WandB for tracking
+        n_jobs: Number of CPU cores to use (default: CPU count - 1)
         upload_to_hf: Whether to upload results to HuggingFace Hub
         hf_repo: HuggingFace repository name for results (default: auto-generated)
     """
@@ -405,11 +515,15 @@ def main(dataset_name,
     
     # Display device info
     device = "cuda" if torch.cuda.is_available() else "cpu"
+    cpu_count = torch.get_num_threads() if hasattr(torch, 'get_num_threads') else 1
+    cores_to_use = max(1, cpu_count - 1) if n_jobs is None else n_jobs
     print(f"\nSystem Info:")
     print(f"  Device: {device}")
     if device == "cuda":
         print(f"  GPU: {torch.cuda.get_device_name()}")
         print(f"  GPU Memory: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB")
+    if n_jobs is not None:
+        print(f"  CPU cores to use: {cores_to_use}")
     
     # Setup output directory
     output_dir = setup_output_directory(output_dir, model_name="lstm_baseline")
@@ -419,14 +533,16 @@ def main(dataset_name,
         project_name="game-review-sentiment",
         experiment_name=f"lstm_baseline_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
         config={
-            "model": "LSTM + Word Embeddings",
+            "model": "Bidirectional LSTM (Paper Architecture)",
             "embed_dim": embed_dim,
             "hidden_dim": hidden_dim,
+            "learning_rate": learning_rate,
             "batch_size": batch_size,
             "epochs": epochs,
             "max_len": max_len,
             "vocab_size": vocab_size,
-            "learning_rate": learning_rate,
+            "dropout_rate": dropout_rate,
+            "fc_sizes": fc_sizes,
             "subset": subset
         },
         use_wandb=use_wandb
@@ -445,11 +561,13 @@ def main(dataset_name,
     model = LSTMSentimentClassifier(
         embed_dim=embed_dim,
         hidden_dim=hidden_dim,
+        learning_rate=learning_rate,
         batch_size=batch_size,
         epochs=epochs,
         max_len=max_len,
         vocab_size=vocab_size,
-        learning_rate=learning_rate
+        dropout_rate=dropout_rate,
+        fc_sizes=fc_sizes
     )
     
     # Train model
@@ -474,15 +592,16 @@ def main(dataset_name,
     
     # Compile all results
     all_results = {
-        'model_type': 'lstm_baseline',
         'model_config': {
             'embed_dim': embed_dim,
             'hidden_dim': hidden_dim,
+            'learning_rate': learning_rate,
             'batch_size': batch_size,
             'epochs': epochs,
             'max_len': max_len,
             'vocab_size': vocab_size,
-            'learning_rate': learning_rate,
+            'dropout_rate': dropout_rate,
+            'fc_sizes': fc_sizes,
             'subset': subset
         },
         'training_time': train_time,
@@ -537,8 +656,8 @@ if __name__ == "__main__":
     parser.add_argument(
         '--embed_dim',
         type=int,
-        default=100,
-        help='Word embedding dimension (default: 100)'
+        default=128,
+        help='Word embedding dimension (default: 128)'
     )
     parser.add_argument(
         '--hidden_dim',
@@ -549,8 +668,8 @@ if __name__ == "__main__":
     parser.add_argument(
         '--batch_size',
         type=int,
-        default=64,
-        help='Batch size for training (default: 64)'
+        default=128,
+        help='Batch size for training (default: 128)'
     )
     parser.add_argument(
         '--epochs',
@@ -567,14 +686,32 @@ if __name__ == "__main__":
     parser.add_argument(
         '--vocab_size',
         type=int,
-        default=20000,
-        help='Maximum vocabulary size (default: 20000)'
+        default=73738,
+        help='Maximum vocabulary size (default: 73738)'
+    )
+    parser.add_argument(
+        '--dropout_rate',
+        type=float,
+        default=0.5,
+        help='Dropout rate (default: 0.5)'
+    )
+    parser.add_argument(
+        '--n_jobs',
+        type=int,
+        default=None,
+        help='Number of CPU cores to use (default: CPU count - 1, leaving 1 for orchestration)'
     )
     parser.add_argument(
         '--learning_rate',
         type=float,
         default=1e-3,
-        help='Learning rate for optimizer (default: 0.001)'
+        help='Learning rate for Adam optimizer (default: 0.001)'
+    )
+    parser.add_argument(
+        '--fc_sizes',
+        type=str,
+        default='64,64,16',
+        help='Comma-separated fully-connected layer sizes, e.g. "64,64,16" (default)'
     )
     parser.add_argument(
         '--subset',
@@ -620,18 +757,24 @@ if __name__ == "__main__":
     # Determine upload setting
     upload_to_hf = args.upload_to_hf and not args.no_upload
     
+    # parse fc_sizes string into tuple of ints
+    fc_sizes_parsed = tuple(int(x) for x in args.fc_sizes.split(',')) if hasattr(args, 'fc_sizes') and args.fc_sizes else (64,64,16)
+
     main(
         dataset_name=args.dataset,
         embed_dim=args.embed_dim,
         hidden_dim=args.hidden_dim,
+        learning_rate=args.learning_rate,
         batch_size=args.batch_size,
         epochs=args.epochs,
         max_len=args.max_len,
         vocab_size=args.vocab_size,
-        learning_rate=args.learning_rate,
+        dropout_rate=args.dropout_rate,
+        fc_sizes=fc_sizes_parsed,
         subset=args.subset,
         output_dir=args.output_dir,
         use_wandb=args.use_wandb,
+        n_jobs=args.n_jobs,
         upload_to_hf=upload_to_hf,
         hf_repo=args.hf_repo
     )
