@@ -191,7 +191,7 @@ class LSTMSentimentClassifier:
                  hidden_dim=128,
                  learning_rate=1e-3,
                  batch_size=128,
-                 epochs=5,
+                 epochs=20,
                  max_len=200,
                  vocab_size=73738,
                  dropout_rate=0.5,
@@ -205,7 +205,7 @@ class LSTMSentimentClassifier:
             hidden_dim: LSTM hidden dimension (128 per direction)
             learning_rate: Learning rate for Adam optimizer (default: 0.001)
             batch_size: Batch size for training (default: 128)
-            epochs: Number of training epochs (default: 5)
+            epochs: Number of training epochs (default: 20)
             max_len: Maximum sequence length (200)
             vocab_size: Maximum vocabulary size (default: 73738)
             dropout_rate: Dropout rate (0.5)
@@ -503,7 +503,7 @@ def main(dataset_name,
          hidden_dim=128,
          learning_rate=1e-3,
          batch_size=128,
-         epochs=5,
+         epochs=20,
          max_len=200,
          vocab_size=73738,
          dropout_rate=0.5,
@@ -523,7 +523,7 @@ def main(dataset_name,
         hidden_dim: LSTM hidden dimension (128 per direction)
         learning_rate: Learning rate for Adam optimizer (default: 0.001)
         batch_size: Batch size for training (default: 128)
-        epochs: Number of training epochs (default: 5)
+        epochs: Number of training epochs (default: 20)
         max_len: Maximum sequence length (200)
         vocab_size: Maximum vocabulary size (default: 73738)
         dropout_rate: Dropout rate (0.5)
@@ -700,8 +700,8 @@ if __name__ == "__main__":
     parser.add_argument(
         '--epochs',
         type=int,
-        default=5,
-        help='Number of training epochs (default: 5)'
+        default=20,
+        help='Number of training epochs (default: 20)'
     )
     parser.add_argument(
         '--max_len',
