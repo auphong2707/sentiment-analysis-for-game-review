@@ -9,12 +9,13 @@ set -e  # Exit on error
 readonly EMBED_DIM=128
 readonly HIDDEN_DIM=128
 readonly BATCH_SIZE=64
-readonly EPOCHS=20
+readonly EPOCHS=5
 readonly DROPOUT_RATE=0.5
 readonly DENSE_UNITS=128
 
 # Grid search parameters (tune learning_rate for optimizer)
-readonly LEARNING_RATE_VALUES=(1e-5 5e-5 1e-4 5e-4 1e-3 5e-3)
+# readonly LEARNING_RATE_VALUES=(1e-5 5e-5 1e-4 5e-4 1e-3 5e-3)
+readonly LEARNING_RATE_VALUES=(1e-3)
 
 # Load dataset from .env if available
 if [ -f .env ]; then
@@ -23,7 +24,7 @@ fi
 
 # Default values
 DATASET="${HF_DATASET_NAME:-}"
-GRIDSEARCH_SUBSET=0.1
+GRIDSEARCH_SUBSET=1.0
 FINAL_SUBSET=1.0
 OUTPUT_BASE_DIR="model_phase/results"
 N_JOBS=""
