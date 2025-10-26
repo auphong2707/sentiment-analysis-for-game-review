@@ -12,7 +12,6 @@ fi
 
 # Default values
 DATASET="${HF_DATASET_NAME:-}"
-MODEL_NAME="roberta-base"
 MAX_LENGTH=512
 BATCH_SIZE=16
 LEARNING_RATE=2e-5
@@ -29,10 +28,6 @@ while [[ $# -gt 0 ]]; do
     case $1 in
         --dataset)
             DATASET="$2"
-            shift 2
-            ;;
-        --model_name)
-            MODEL_NAME="$2"
             shift 2
             ;;
         --max_length)
@@ -81,7 +76,6 @@ while [[ $# -gt 0 ]]; do
             echo ""
             echo "Options:"
             echo "  --dataset DATASET            HuggingFace dataset name (required)"
-            echo "  --model_name MODEL           Pre-trained model name (default: roberta-base)"
             echo "  --max_length LENGTH          Maximum sequence length (default: 512)"
             echo "  --batch_size SIZE            Batch size for training (default: 16)"
             echo "  --learning_rate RATE         Learning rate (default: 2e-5)"
@@ -111,7 +105,7 @@ echo "============================================================"
 echo ""
 echo "Configuration:"
 echo "  Dataset: $DATASET"
-echo "  Model: $MODEL_NAME"
+echo "  Model: FacebookAI/roberta-base (hardcoded)"
 echo "  Max Length: $MAX_LENGTH"
 echo "  Batch Size: $BATCH_SIZE"
 echo "  Learning Rate: $LEARNING_RATE"
@@ -132,7 +126,6 @@ echo ""
 # Build training command
 CMD="python model_phase/main_roberta.py \
     --dataset $DATASET \
-    --model_name $MODEL_NAME \
     --max_length $MAX_LENGTH \
     --batch_size $BATCH_SIZE \
     --learning_rate $LEARNING_RATE \
