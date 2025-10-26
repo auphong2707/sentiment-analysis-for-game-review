@@ -45,21 +45,7 @@ from torch.optim import AdamW
 
 # Monkey-patch BEFORE importing transformers
 from huggingface_hub import hf_api
-from huggingface_hub.errors import RemoteEntryNotFoundError
 
-original_list_repo_tree = hf_api.HfApi.list_repo_tree
-
-def patched_list_repo_tree(self, *args, **kwargs):
-    """Patched version that ignores missing additional_chat_templates."""
-    try:
-        return original_list_repo_tree(self, *args, **kwargs)
-    except RemoteEntryNotFoundError as e:
-        # If it's the chat templates error, return empty iterator
-        if 'additional_chat_templates' in str(e):
-            return iter([])
-        raise
-
-hf_api.HfApi.list_repo_tree = patched_list_repo_tree
 
 # Now safe to import transformers
 from transformers import (
