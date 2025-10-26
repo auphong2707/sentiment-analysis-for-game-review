@@ -264,7 +264,8 @@ def main(dataset_name,
          use_wandb=False,
          n_jobs=None,
          upload_to_hf=True,
-         hf_repo=None):
+         hf_repo=None,
+         skip_test_eval=False):
     """
     Main training and evaluation pipeline.
     
@@ -280,6 +281,7 @@ def main(dataset_name,
         n_jobs: Number of CPU cores to use (default: CPU count - 1)
         upload_to_hf: Whether to upload results to HuggingFace Hub
         hf_repo: HuggingFace repository name for results (default: auto-generated)
+        skip_test_eval: Whether to skip test set evaluation (for grid search)
     """
     print("\n" + "="*60)
     print("TF-IDF + Logistic Regression Baseline")
@@ -343,10 +345,16 @@ def main(dataset_name,
         model, val_data['text'], val_data['label'], "Validation"
     )
     
-    # Evaluate on test set
-    test_results = evaluate_classifier(
-        model, test_data['text'], test_data['label'], "Test"
-    )
+    # Evaluate on test set (skip during grid search to avoid data leakage)
+    if skip_test_eval:
+        print("\n" + "="*60)
+        print("Skipping test set evaluation (grid search mode)")
+        print("="*60)
+        test_results = {}
+    else:
+        test_results = evaluate_classifier(
+            model, test_data['text'], test_data['label'], "Test"
+        )
     
     # Get and print feature importance
     feature_importance = model.get_feature_importance(top_n=20)
@@ -475,6 +483,11 @@ if __name__ == "__main__":
         help='Skip uploading results to HuggingFace Hub'
     )
     parser.add_argument(
+        '--skip_test_eval',
+        action='store_true',
+        help='Skip test set evaluation (for grid search to avoid data leakage)'
+    )
+    parser.add_argument(
         '--hf_repo',
         type=str,
         default=None,
@@ -501,5 +514,6 @@ if __name__ == "__main__":
         use_wandb=args.use_wandb,
         n_jobs=args.n_jobs,
         upload_to_hf=upload_to_hf,
-        hf_repo=args.hf_repo
+        hf_repo=args.hf_repo,
+        skip_test_eval=args.skip_test_eval
     )

@@ -118,7 +118,8 @@ if (-not $SkipGridsearch) {
             "--C", $CValue,
             "--subset", $GridsearchSubset,
             "--output_dir", $OutputDir,
-            "--no_upload"
+            "--no_upload",
+            "--skip_test_eval"
         )
                 
                 # Add n_jobs if specified

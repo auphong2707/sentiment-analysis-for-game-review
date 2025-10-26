@@ -149,7 +149,8 @@ if [ "$SKIP_GRIDSEARCH" = false ]; then
             --weight_decay $WEIGHT_DECAY \
             --subset $GRIDSEARCH_SUBSET \
             --output_dir $OUTPUT_DIR \
-            --no_upload"
+            --no_upload \
+            --skip_test_eval"
                 
                 # Add wandb if specified
                 if [ "$USE_WANDB" = true ]; then

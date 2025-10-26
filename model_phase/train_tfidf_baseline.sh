@@ -143,7 +143,8 @@ if [ "$SKIP_GRIDSEARCH" = false ]; then
             --C $C_VALUE \
             --subset $GRIDSEARCH_SUBSET \
             --output_dir $OUTPUT_DIR \
-            --no_upload"
+            --no_upload \
+            --skip_test_eval"
                 
                 # Add n_jobs if specified
                 if [ -n "$N_JOBS" ]; then
