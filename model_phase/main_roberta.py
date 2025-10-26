@@ -87,6 +87,9 @@ from model_phase.utilities import (
     upload_results_to_hf
 )
 
+# Constants
+MODEL_NAME = 'FacebookAI/roberta-base'
+
 
 class GameReviewDataset(Dataset):
     """PyTorch Dataset for game reviews."""
@@ -133,7 +136,6 @@ class RoBERTaSentimentClassifier:
     """
     
     def __init__(self, 
-                 model_name='roberta-base',
                  num_labels=3,
                  max_length=512,
                  batch_size=16,
@@ -146,7 +148,6 @@ class RoBERTaSentimentClassifier:
         Initialize the classifier.
         
         Args:
-            model_name: HuggingFace model name (default: roberta-base)
             num_labels: Number of sentiment classes
             max_length: Maximum sequence length
             batch_size: Batch size for training
@@ -156,7 +157,7 @@ class RoBERTaSentimentClassifier:
             weight_decay: Weight decay for optimizer
             device: Device to use (cuda/cpu), auto-detected if None
         """
-        self.model_name = model_name
+        self.model_name = MODEL_NAME
         self.num_labels = num_labels
         self.max_length = max_length
         self.batch_size = batch_size
@@ -177,10 +178,10 @@ class RoBERTaSentimentClassifier:
             print(f"GPU Memory: {torch.cuda.get_device_properties(0).total_memory / 1e9:.2f} GB")
         
         # Initialize tokenizer and model
-        print(f"\nLoading tokenizer and model: {model_name}")
+        print(f"\nLoading tokenizer and model: {self.model_name}")
         
         self.tokenizer = AutoTokenizer.from_pretrained(
-            model_name, 
+            self.model_name, 
             use_fast=True
         )
         
@@ -607,7 +608,6 @@ def evaluate_classifier(model, texts, labels, split_name="Test"):
 
 
 def main(dataset_name,
-         model_name='roberta-base',
          max_length=512,
          batch_size=16,
          learning_rate=2e-5,
@@ -624,7 +624,6 @@ def main(dataset_name,
     
     Args:
         dataset_name: HuggingFace dataset name
-        model_name: Pre-trained model name (default: roberta-base)
         max_length: Maximum sequence length
         batch_size: Batch size for training
         learning_rate: Learning rate for optimizer
@@ -649,7 +648,7 @@ def main(dataset_name,
         project_name="game-review-sentiment",
         experiment_name=f"roberta_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
         config={
-            "model": model_name,
+            "model": MODEL_NAME,
             "max_length": max_length,
             "batch_size": batch_size,
             "learning_rate": learning_rate,
@@ -672,7 +671,6 @@ def main(dataset_name,
     print("Initializing RoBERTa model")
     print(f"{'='*60}")
     model = RoBERTaSentimentClassifier(
-        model_name=model_name,
         num_labels=3,
         max_length=max_length,
         batch_size=batch_size,
@@ -707,7 +705,7 @@ def main(dataset_name,
     # Compile all results
     all_results = {
         'model_config': {
-            'model_name': model_name,
+            'model_name': MODEL_NAME,
             'max_length': max_length,
             'batch_size': batch_size,
             'learning_rate': learning_rate,
@@ -759,12 +757,6 @@ if __name__ == "__main__":
         type=str,
         default=os.getenv('HF_DATASET_NAME'),
         help='HuggingFace dataset name (default: from .env HF_DATASET_NAME)'
-    )
-    parser.add_argument(
-        '--model_name',
-        type=str,
-        default='roberta-base',
-        help='Pre-trained model name (default: roberta-base)'
     )
     parser.add_argument(
         '--max_length',
@@ -848,7 +840,6 @@ if __name__ == "__main__":
     
     main(
         dataset_name=args.dataset,
-        model_name=args.model_name,
         max_length=args.max_length,
         batch_size=args.batch_size,
         learning_rate=args.learning_rate,
