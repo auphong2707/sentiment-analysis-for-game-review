@@ -6,7 +6,7 @@
 set -e  # Exit on error
 
 # LSTM parameters (constants - fixed according to paper architecture)
-readonly EMBED_DIM=100
+readonly EMBED_DIM=128
 readonly HIDDEN_DIM=128
 readonly BATCH_SIZE=64
 readonly EPOCHS=20
