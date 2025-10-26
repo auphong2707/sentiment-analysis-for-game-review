@@ -14,8 +14,7 @@ readonly DROPOUT_RATE=0.5
 readonly DENSE_UNITS=128
 
 # Grid search parameters (tune learning_rate for optimizer)
-# readonly LEARNING_RATE_VALUES=(1e-5 5e-5 1e-4 5e-4 1e-3 5e-3)
-readonly LEARNING_RATE_VALUES=(1e-3)
+readonly LEARNING_RATE_VALUES=(1e-5 5e-5 1e-4 5e-4 1e-3 5e-3)
 
 # Load dataset from .env if available
 if [ -f .env ]; then
@@ -245,9 +244,9 @@ cat "$BEST_CONFIG_FILE"
 echo ""
 
 # Extract hyperparameters from best config
-# Parse the line: "Configuration: learning_rate=0.001"
+# Parse the line: "Configuration: learning_rate=0.001" or "Configuration: learning_rate=5e-3"
 CONFIG_LINE=$(grep "Configuration:" "$BEST_CONFIG_FILE")
-BEST_LEARNING_RATE=$(echo "$CONFIG_LINE" | sed -n 's/.*learning_rate=\([0-9.]*\).*/\1/p')
+BEST_LEARNING_RATE=$(echo "$CONFIG_LINE" | sed -n 's/.*learning_rate=\([0-9.e-]*\).*/\1/p')
 
 echo "Extracted hyperparameters:"
 echo "  Learning Rate: $BEST_LEARNING_RATE"
