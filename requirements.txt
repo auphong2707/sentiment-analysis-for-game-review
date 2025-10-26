@@ -34,4 +34,4 @@ wandb>=0.16.0
 
 # Deep Learning / Transformers
 torch>=2.0.0
-transformers>=4.30.0
+transformers==4.47.1
