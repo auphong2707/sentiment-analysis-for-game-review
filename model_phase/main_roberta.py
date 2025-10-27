@@ -301,7 +301,7 @@ class RoBERTaSentimentClassifier:
             eval_strategy="epoch",
             save_strategy="epoch" if save_checkpoints else "no",
             save_total_limit=2 if save_checkpoints else None,
-            load_best_model_at_end=True,
+            load_best_model_at_end=save_checkpoints,  # Only load best model if we're saving checkpoints
             metric_for_best_model="f1",
             greater_is_better=True,
             report_to="wandb" if (use_wandb and WANDB_AVAILABLE) else "none",
