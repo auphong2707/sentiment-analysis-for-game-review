@@ -137,7 +137,8 @@ class RoBERTaSentimentClassifier:
                  num_epochs=3,
                  warmup_steps=0,
                  weight_decay=0.01,
-                 device=None):
+                 device=None,
+                 checkpoint_dir=None):
         """
         Initialize the classifier.
         
@@ -150,6 +151,7 @@ class RoBERTaSentimentClassifier:
             warmup_steps: Number of warmup steps for learning rate scheduler
             weight_decay: Weight decay for optimizer
             device: Device to use (cuda/cpu), auto-detected if None
+            checkpoint_dir: Directory to save checkpoints during training
         """
         self.model_name = MODEL_NAME
         self.num_labels = num_labels
@@ -159,6 +161,7 @@ class RoBERTaSentimentClassifier:
         self.num_epochs = num_epochs
         self.warmup_steps = warmup_steps
         self.weight_decay = weight_decay
+        self.checkpoint_dir = checkpoint_dir
         
         # Set device
         if device is None:
@@ -183,6 +186,10 @@ class RoBERTaSentimentClassifier:
         self.label2id = None
         self.id2label = None
         
+        # Checkpoint tracking
+        self.start_epoch = 0
+        self.best_val_f1 = 0
+        
     def _create_model(self, label2id, id2label):
         """Create model with proper label mappings."""
         self.label2id = label2id
@@ -198,8 +205,89 @@ class RoBERTaSentimentClassifier:
             id2label=id2label
         )
         self.model.to(self.device)
+    
+    def save_checkpoint(self, epoch, optimizer, scheduler, val_f1, is_best=False):
+        """Save training checkpoint."""
+        if self.checkpoint_dir is None:
+            return
         
-    def fit(self, train_texts, train_labels, val_texts, val_labels, use_wandb=False):
+        checkpoint_dir = Path(self.checkpoint_dir)
+        checkpoint_dir.mkdir(parents=True, exist_ok=True)
+        
+        checkpoint = {
+            'epoch': epoch,
+            'model_state_dict': self.model.state_dict(),
+            'optimizer_state_dict': optimizer.state_dict(),
+            'scheduler_state_dict': scheduler.state_dict(),
+            'best_val_f1': val_f1,
+            'label2id': self.label2id,
+            'id2label': self.id2label,
+            'model_config': {
+                'num_labels': self.num_labels,
+                'max_length': self.max_length,
+                'batch_size': self.batch_size,
+                'learning_rate': self.learning_rate,
+                'num_epochs': self.num_epochs,
+                'warmup_steps': self.warmup_steps,
+                'weight_decay': self.weight_decay
+            }
+        }
+        
+        # Save latest checkpoint
+        latest_path = checkpoint_dir / 'checkpoint_latest.pt'
+        torch.save(checkpoint, latest_path)
+        print(f"  Saved checkpoint: {latest_path}")
+        
+        # Save best checkpoint if this is the best
+        if is_best:
+            best_path = checkpoint_dir / 'checkpoint_best.pt'
+            torch.save(checkpoint, best_path)
+            print(f"  Saved best checkpoint: {best_path}")
+        
+        # Save epoch-specific checkpoint (optional, every 5 epochs)
+        if (epoch + 1) % 5 == 0:
+            epoch_path = checkpoint_dir / f'checkpoint_epoch_{epoch+1}.pt'
+            torch.save(checkpoint, epoch_path)
+            print(f"  Saved epoch checkpoint: {epoch_path}")
+    
+    def load_checkpoint(self, checkpoint_path, optimizer=None, scheduler=None):
+        """Load training checkpoint."""
+        checkpoint_path = Path(checkpoint_path)
+        if not checkpoint_path.exists():
+            print(f"Checkpoint not found: {checkpoint_path}")
+            return False
+        
+        print(f"Loading checkpoint from: {checkpoint_path}")
+        checkpoint = torch.load(checkpoint_path, map_location=self.device)
+        
+        # Restore label mappings
+        self.label2id = checkpoint['label2id']
+        self.id2label = checkpoint['id2label']
+        
+        # Create model if not exists
+        if self.model is None:
+            self._create_model(self.label2id, self.id2label)
+        
+        # Load model state
+        self.model.load_state_dict(checkpoint['model_state_dict'])
+        
+        # Load optimizer and scheduler if provided
+        if optimizer is not None and 'optimizer_state_dict' in checkpoint:
+            optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        
+        if scheduler is not None and 'scheduler_state_dict' in checkpoint:
+            scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
+        
+        # Restore training state
+        self.start_epoch = checkpoint['epoch'] + 1
+        self.best_val_f1 = checkpoint['best_val_f1']
+        
+        print(f"  Resumed from epoch {checkpoint['epoch']+1}")
+        print(f"  Best validation F1: {self.best_val_f1:.4f}")
+        
+        return True
+        
+    def fit(self, train_texts, train_labels, val_texts, val_labels, use_wandb=False, resume_from_checkpoint=None):
         """
         Train the model on text data.
         
@@ -209,6 +297,7 @@ class RoBERTaSentimentClassifier:
             val_texts: List of validation review texts
             val_labels: List of validation sentiment labels
             use_wandb: Whether to log metrics to WandB
+            resume_from_checkpoint: Path to checkpoint file to resume training from
         """
         print("\n" + "="*60)
         print("Preparing Data")
@@ -259,18 +348,25 @@ class RoBERTaSentimentClassifier:
             num_training_steps=total_steps
         )
         
+        # Load checkpoint if resuming
+        if resume_from_checkpoint:
+            self.load_checkpoint(resume_from_checkpoint, optimizer, scheduler)
+        
         print("\n" + "="*60)
         print("Training Model")
         print("="*60)
         print(f"Epochs: {self.num_epochs}")
+        print(f"Starting epoch: {self.start_epoch + 1}")
         print(f"Learning rate: {self.learning_rate}")
         print(f"Total steps: {total_steps}")
+        if self.checkpoint_dir:
+            print(f"Checkpoint directory: {self.checkpoint_dir}")
         
         # Training loop
-        best_val_f1 = 0
+        best_val_f1 = self.best_val_f1
         training_stats = []
         
-        for epoch in range(self.num_epochs):
+        for epoch in range(self.start_epoch, self.num_epochs):
             print(f"\n{'='*60}")
             print(f"Epoch {epoch + 1}/{self.num_epochs}")
             print(f"{'='*60}")
@@ -311,6 +407,10 @@ class RoBERTaSentimentClassifier:
             if val_metrics['f1'] > best_val_f1:
                 best_val_f1 = val_metrics['f1']
                 print(f"  ✓ New best validation F1: {best_val_f1:.4f}")
+                
+            # Save checkpoint
+            is_best = val_metrics['f1'] >= best_val_f1
+            self.save_checkpoint(epoch, optimizer, scheduler, best_val_f1, is_best=is_best)
         
         print("\n" + "="*60)
         print("Training Complete!")
@@ -641,7 +741,9 @@ def main(dataset_name,
          use_wandb=False,
          upload_to_hf=True,
          hf_repo=None,
-         skip_test_eval=False):
+         skip_test_eval=False,
+         save_checkpoints=True,
+         resume_from_checkpoint=None):
     """
     Main training and evaluation pipeline for RoBERTa.
     
@@ -659,6 +761,8 @@ def main(dataset_name,
         upload_to_hf: Whether to upload results to HuggingFace Hub
         hf_repo: HuggingFace repository name for results
         skip_test_eval: Whether to skip test set evaluation (for grid search)
+        save_checkpoints: Whether to save training checkpoints
+        resume_from_checkpoint: Path to checkpoint file to resume training from
     """
     print("\n" + "="*60)
     print("RoBERTa Fine-tuning for Sentiment Analysis")
@@ -709,6 +813,10 @@ def main(dataset_name,
     print(f"\n{'='*60}")
     print("Initializing RoBERTa model")
     print(f"{'='*60}")
+    
+    # Set checkpoint directory if checkpoints are enabled
+    checkpoint_dir = output_dir / 'checkpoints' if save_checkpoints else None
+    
     model = RoBERTaSentimentClassifier(
         num_labels=3,
         max_length=max_length,
@@ -716,7 +824,8 @@ def main(dataset_name,
         learning_rate=learning_rate,
         num_epochs=num_epochs,
         warmup_steps=warmup_steps,
-        weight_decay=weight_decay
+        weight_decay=weight_decay,
+        checkpoint_dir=checkpoint_dir
     )
     
     # Train model
@@ -726,7 +835,8 @@ def main(dataset_name,
         train_data['label'],
         val_data['text'],
         val_data['label'],
-        use_wandb=wandb_initialized
+        use_wandb=wandb_initialized,
+        resume_from_checkpoint=resume_from_checkpoint
     )
     train_time = time.time() - train_start
     
@@ -965,6 +1075,23 @@ if __name__ == "__main__":
         action='store_true',
         help='Skip test set evaluation (useful for grid search)'
     )
+    parser.add_argument(
+        '--save_checkpoints',
+        action='store_true',
+        default=True,
+        help='Save training checkpoints (default: True)'
+    )
+    parser.add_argument(
+        '--no_checkpoints',
+        action='store_true',
+        help='Disable checkpoint saving'
+    )
+    parser.add_argument(
+        '--resume_from_checkpoint',
+        type=str,
+        default=None,
+        help='Path to checkpoint file to resume training from'
+    )
     
     args = parser.parse_args()
     
@@ -974,6 +1101,9 @@ if __name__ == "__main__":
     
     # Determine upload setting
     upload_to_hf = args.upload_to_hf and not args.no_upload
+    
+    # Determine checkpoint setting
+    save_checkpoints = args.save_checkpoints and not args.no_checkpoints
     
     main(
         dataset_name=args.dataset,
@@ -988,5 +1118,7 @@ if __name__ == "__main__":
         use_wandb=args.use_wandb,
         upload_to_hf=upload_to_hf,
         hf_repo=args.hf_repo,
-        skip_test_eval=args.skip_test_eval
+        skip_test_eval=args.skip_test_eval,
+        save_checkpoints=save_checkpoints,
+        resume_from_checkpoint=args.resume_from_checkpoint
     )

@@ -54,7 +54,13 @@ param(
     [switch]$NoUpload,
     
     [Parameter(Mandatory=$false)]
-    [switch]$SkipTestEval
+    [switch]$SkipTestEval,
+    
+    [Parameter(Mandatory=$false)]
+    [string]$ResumeFromCheckpoint = $null,
+    
+    [Parameter(Mandatory=$false)]
+    [switch]$NoCheckpoints
 )
 
 $ErrorActionPreference = "Stop"
@@ -83,6 +89,10 @@ Write-Host "  Weight Decay: $WeightDecay"
 Write-Host "  Data Subset: $Subset"
 if ($OutputDir) {
     Write-Host "  Output Directory: $OutputDir"
+}
+Write-Host "  Checkpoints: $(if ($NoCheckpoints) { 'Disabled' } else { 'Enabled' })"
+if ($ResumeFromCheckpoint) {
+    Write-Host "  Resume from: $ResumeFromCheckpoint"
 }
 Write-Host ""
 
@@ -128,6 +138,14 @@ if ($NoUpload) {
 
 if ($SkipTestEval) {
     $TrainArgs += "--skip_test_eval"
+}
+
+if ($NoCheckpoints) {
+    $TrainArgs += "--no_checkpoints"
+}
+
+if ($ResumeFromCheckpoint) {
+    $TrainArgs += @("--resume_from_checkpoint", $ResumeFromCheckpoint)
 }
 
 Write-Host "============================================================" -ForegroundColor Green

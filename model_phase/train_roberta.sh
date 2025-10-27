@@ -27,6 +27,8 @@ FINAL_SUBSET=1.0
 OUTPUT_BASE_DIR="model_phase/results"
 USE_WANDB=true  # Enable by default
 SKIP_GRIDSEARCH=false
+RESUME_CHECKPOINT=""
+NO_CHECKPOINTS=false
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -59,18 +61,28 @@ while [[ $# -gt 0 ]]; do
             SKIP_GRIDSEARCH=true
             shift
             ;;
+        --resume_from_checkpoint)
+            RESUME_CHECKPOINT="$2"
+            shift 2
+            ;;
+        --no_checkpoints)
+            NO_CHECKPOINTS=true
+            shift
+            ;;
         *)
             echo "Unknown option: $1"
             echo "Usage: bash train_roberta.sh --dataset DATASET [OPTIONS]"
             echo ""
             echo "Options:"
-            echo "  --dataset DATASET            HuggingFace dataset name (required)"
-            echo "  --gridsearch_subset FLOAT    Subset for grid search (default: 0.1)"
-            echo "  --final_subset FLOAT         Subset for final training (default: 1.0)"
-            echo "  --output_dir DIR             Base output directory (default: model_phase/results)"
-            echo "  --use_wandb                  Use WandB for experiment tracking (default: enabled)"
-            echo "  --no_wandb                   Disable WandB logging"
-            echo "  --skip_gridsearch            Skip grid search and use provided hyperparameters"
+            echo "  --dataset DATASET                    HuggingFace dataset name (required)"
+            echo "  --gridsearch_subset FLOAT            Subset for grid search (default: 0.01)"
+            echo "  --final_subset FLOAT                 Subset for final training (default: 1.0)"
+            echo "  --output_dir DIR                     Base output directory (default: model_phase/results)"
+            echo "  --use_wandb                          Use WandB for experiment tracking (default: enabled)"
+            echo "  --no_wandb                           Disable WandB logging"
+            echo "  --skip_gridsearch                    Skip grid search and use provided hyperparameters"
+            echo "  --resume_from_checkpoint CHECKPOINT  Resume training from checkpoint file"
+            echo "  --no_checkpoints                     Disable checkpoint saving during training"
             exit 1
             ;;
     esac
@@ -92,6 +104,10 @@ echo "Grid Search Subset: $GRIDSEARCH_SUBSET"
 echo "Final Training Subset: $FINAL_SUBSET"
 echo "Output Directory: $OUTPUT_BASE_DIR"
 echo "WandB Logging: $USE_WANDB"
+echo "Checkpoints: $([ "$NO_CHECKPOINTS" = true ] && echo "Disabled" || echo "Enabled")"
+if [ -n "$RESUME_CHECKPOINT" ]; then
+    echo "Resume from: $RESUME_CHECKPOINT"
+fi
 echo ""
 
 # Check for GPU
@@ -161,6 +177,11 @@ if [ "$SKIP_GRIDSEARCH" = false ]; then
                 # Add wandb if specified
                 if [ "$USE_WANDB" = true ]; then
                     CMD="$CMD --use_wandb"
+                fi
+                
+                # Add checkpoint options
+                if [ "$NO_CHECKPOINTS" = true ]; then
+                    CMD="$CMD --no_checkpoints"
                 fi
                 
                 # Run training
@@ -285,6 +306,15 @@ FINAL_CMD="python model_phase/main_roberta.py \
 
 if [ "$USE_WANDB" = true ]; then
     FINAL_CMD="$FINAL_CMD --use_wandb"
+fi
+
+# Add checkpoint options
+if [ "$NO_CHECKPOINTS" = true ]; then
+    FINAL_CMD="$FINAL_CMD --no_checkpoints"
+fi
+
+if [ -n "$RESUME_CHECKPOINT" ]; then
+    FINAL_CMD="$FINAL_CMD --resume_from_checkpoint $RESUME_CHECKPOINT"
 fi
 
 echo "Running: $FINAL_CMD"
