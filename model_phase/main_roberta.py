@@ -48,8 +48,7 @@ sys.path.insert(0, str(project_root))
 
 import numpy as np
 import torch
-from torch.utils.data import DataLoader, Dataset
-from torch.optim import AdamW
+from torch.utils.data import Dataset
 
 # Monkey-patch BEFORE importing transformers
 from huggingface_hub import hf_api
@@ -59,15 +58,17 @@ from huggingface_hub import hf_api
 from transformers import (
     AutoTokenizer,
     RobertaForSequenceClassification,
-    get_linear_schedule_with_warmup
+    Trainer,
+    TrainingArguments,
+    TrainerCallback
 )
-from tqdm import tqdm
 from sklearn.metrics import (
     accuracy_score,
     precision_recall_fscore_support,
     classification_report,
     confusion_matrix
 )
+import numpy as np
 
 # Import utilities
 from model_phase.utilities import (
@@ -88,16 +89,20 @@ MODEL_NAME = 'FacebookAI/roberta-base'
 class GameReviewDataset(Dataset):
     """PyTorch Dataset for game reviews."""
     
-    def __init__(self, texts, labels, tokenizer, max_length=512):
+    def __init__(self, texts, labels, tokenizer, max_length=512, label2id=None):
         self.texts = texts
         self.labels = labels
         self.tokenizer = tokenizer
         self.max_length = max_length
         
         # Create label mapping
-        unique_labels = sorted(set(labels))
-        self.label2id = {label: idx for idx, label in enumerate(unique_labels)}
-        self.id2label = {idx: label for label, idx in self.label2id.items()}
+        if label2id is None:
+            unique_labels = sorted(set(labels))
+            self.label2id = {label: idx for idx, label in enumerate(unique_labels)}
+            self.id2label = {idx: label for label, idx in self.label2id.items()}
+        else:
+            self.label2id = label2id
+            self.id2label = {idx: label for label, idx in label2id.items()}
         
     def __len__(self):
         return len(self.texts)
@@ -124,9 +129,25 @@ class GameReviewDataset(Dataset):
         }
 
 
+class WandbCallback(TrainerCallback):
+    """Custom callback for WandB logging."""
+    
+    def __init__(self, use_wandb=False):
+        self.use_wandb = use_wandb
+        
+    def on_log(self, args, state, control, logs=None, **kwargs):
+        """Log metrics to WandB."""
+        if self.use_wandb and WANDB_AVAILABLE and logs:
+            # Only log if wandb is initialized
+            try:
+                wandb.log(logs, step=state.global_step)
+            except Exception:
+                pass
+
+
 class RoBERTaSentimentClassifier:
     """
-    Sentiment classifier using fine-tuned RoBERTa.
+    Sentiment classifier using fine-tuned RoBERTa with HuggingFace Trainer.
     """
     
     def __init__(self, 
@@ -137,7 +158,7 @@ class RoBERTaSentimentClassifier:
                  num_epochs=3,
                  warmup_steps=0,
                  weight_decay=0.01,
-                 device=None,
+                 output_dir=None,
                  checkpoint_dir=None):
         """
         Initialize the classifier.
@@ -150,7 +171,7 @@ class RoBERTaSentimentClassifier:
             num_epochs: Number of training epochs
             warmup_steps: Number of warmup steps for learning rate scheduler
             weight_decay: Weight decay for optimizer
-            device: Device to use (cuda/cpu), auto-detected if None
+            output_dir: Directory to save model outputs
             checkpoint_dir: Directory to save checkpoints during training
         """
         self.model_name = MODEL_NAME
@@ -161,21 +182,18 @@ class RoBERTaSentimentClassifier:
         self.num_epochs = num_epochs
         self.warmup_steps = warmup_steps
         self.weight_decay = weight_decay
+        self.output_dir = output_dir
         self.checkpoint_dir = checkpoint_dir
         
-        # Set device
-        if device is None:
-            self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        else:
-            self.device = torch.device(device)
-        
-        print(f"\nUsing device: {self.device}")
-        if self.device.type == 'cuda':
+        # Device info
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        print(f"\nUsing device: {device}")
+        if device.type == 'cuda':
             print(f"GPU: {torch.cuda.get_device_name(0)}")
             print(f"GPU Memory: {torch.cuda.get_device_properties(0).total_memory / 1e9:.2f} GB")
         
-        # Initialize tokenizer and model
-        print(f"\nLoading tokenizer and model: {self.model_name}")
+        # Initialize tokenizer
+        print(f"\nLoading tokenizer: {self.model_name}")
         
         self.tokenizer = AutoTokenizer.from_pretrained(
             self.model_name, 
@@ -185,10 +203,7 @@ class RoBERTaSentimentClassifier:
         self.model = None  # Will be initialized when we know label mapping
         self.label2id = None
         self.id2label = None
-        
-        # Checkpoint tracking
-        self.start_epoch = 0
-        self.best_val_f1 = 0
+        self.trainer = None
         
     def _create_model(self, label2id, id2label):
         """Create model with proper label mappings."""
@@ -198,98 +213,35 @@ class RoBERTaSentimentClassifier:
         # Use fallback model name if needed
         model_name_to_load = self.model_name.replace("FacebookAI/", "")
         
+        print(f"\nLoading model: {model_name_to_load}")
         self.model = RobertaForSequenceClassification.from_pretrained(
             model_name_to_load,
             num_labels=self.num_labels,
             label2id=label2id,
             id2label=id2label
         )
-        self.model.to(self.device)
     
-    def save_checkpoint(self, epoch, optimizer, scheduler, val_f1, is_best=False):
-        """Save training checkpoint."""
-        if self.checkpoint_dir is None:
-            return
+    def compute_metrics(self, eval_pred):
+        """Compute metrics for evaluation."""
+        predictions, labels = eval_pred
+        predictions = np.argmax(predictions, axis=1)
         
-        checkpoint_dir = Path(self.checkpoint_dir)
-        checkpoint_dir.mkdir(parents=True, exist_ok=True)
+        # Calculate metrics
+        accuracy = accuracy_score(labels, predictions)
+        precision, recall, f1, _ = precision_recall_fscore_support(
+            labels, predictions, average='weighted', zero_division=0
+        )
         
-        checkpoint = {
-            'epoch': epoch,
-            'model_state_dict': self.model.state_dict(),
-            'optimizer_state_dict': optimizer.state_dict(),
-            'scheduler_state_dict': scheduler.state_dict(),
-            'best_val_f1': val_f1,
-            'label2id': self.label2id,
-            'id2label': self.id2label,
-            'model_config': {
-                'num_labels': self.num_labels,
-                'max_length': self.max_length,
-                'batch_size': self.batch_size,
-                'learning_rate': self.learning_rate,
-                'num_epochs': self.num_epochs,
-                'warmup_steps': self.warmup_steps,
-                'weight_decay': self.weight_decay
-            }
+        return {
+            'accuracy': float(accuracy),
+            'precision': float(precision),
+            'recall': float(recall),
+            'f1': float(f1)
         }
-        
-        # Save latest checkpoint
-        latest_path = checkpoint_dir / 'checkpoint_latest.pt'
-        torch.save(checkpoint, latest_path)
-        print(f"  Saved checkpoint: {latest_path}")
-        
-        # Save best checkpoint if this is the best
-        if is_best:
-            best_path = checkpoint_dir / 'checkpoint_best.pt'
-            torch.save(checkpoint, best_path)
-            print(f"  Saved best checkpoint: {best_path}")
-        
-        # Save epoch-specific checkpoint (optional, every 5 epochs)
-        if (epoch + 1) % 5 == 0:
-            epoch_path = checkpoint_dir / f'checkpoint_epoch_{epoch+1}.pt'
-            torch.save(checkpoint, epoch_path)
-            print(f"  Saved epoch checkpoint: {epoch_path}")
     
-    def load_checkpoint(self, checkpoint_path, optimizer=None, scheduler=None):
-        """Load training checkpoint."""
-        checkpoint_path = Path(checkpoint_path)
-        if not checkpoint_path.exists():
-            print(f"Checkpoint not found: {checkpoint_path}")
-            return False
-        
-        print(f"Loading checkpoint from: {checkpoint_path}")
-        checkpoint = torch.load(checkpoint_path, map_location=self.device)
-        
-        # Restore label mappings
-        self.label2id = checkpoint['label2id']
-        self.id2label = checkpoint['id2label']
-        
-        # Create model if not exists
-        if self.model is None:
-            self._create_model(self.label2id, self.id2label)
-        
-        # Load model state
-        self.model.load_state_dict(checkpoint['model_state_dict'])
-        
-        # Load optimizer and scheduler if provided
-        if optimizer is not None and 'optimizer_state_dict' in checkpoint:
-            optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-        
-        if scheduler is not None and 'scheduler_state_dict' in checkpoint:
-            scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
-        
-        # Restore training state
-        self.start_epoch = checkpoint['epoch'] + 1
-        self.best_val_f1 = checkpoint['best_val_f1']
-        
-        print(f"  Resumed from epoch {checkpoint['epoch']+1}")
-        print(f"  Best validation F1: {self.best_val_f1:.4f}")
-        
-        return True
-        
-    def fit(self, train_texts, train_labels, val_texts, val_labels, use_wandb=False, resume_from_checkpoint=None):
+    def fit(self, train_texts, train_labels, val_texts, val_labels, use_wandb=False, resume_from_checkpoint=None, save_checkpoints=True):
         """
-        Train the model on text data.
+        Train the model on text data using HuggingFace Trainer.
         
         Args:
             train_texts: List of training review texts
@@ -297,7 +249,8 @@ class RoBERTaSentimentClassifier:
             val_texts: List of validation review texts
             val_labels: List of validation sentiment labels
             use_wandb: Whether to log metrics to WandB
-            resume_from_checkpoint: Path to checkpoint file to resume training from
+            resume_from_checkpoint: Path to checkpoint directory to resume training from
+            save_checkpoints: Whether to save checkpoints during training
         """
         print("\n" + "="*60)
         print("Preparing Data")
@@ -308,207 +261,117 @@ class RoBERTaSentimentClassifier:
             train_texts, train_labels, self.tokenizer, self.max_length
         )
         val_dataset = GameReviewDataset(
-            val_texts, val_labels, self.tokenizer, self.max_length
+            val_texts, val_labels, self.tokenizer, self.max_length, 
+            label2id=train_dataset.label2id
         )
         
         # Create model with proper label mappings
         if self.model is None:
             self._create_model(train_dataset.label2id, train_dataset.id2label)
         
-        # Create data loaders
-        train_loader = DataLoader(
-            train_dataset,
-            batch_size=self.batch_size,
-            shuffle=True,
-            num_workers=0
-        )
-        val_loader = DataLoader(
-            val_dataset,
-            batch_size=self.batch_size,
-            shuffle=False,
-            num_workers=0
-        )
-        
         print(f"\nTraining samples: {len(train_dataset)}")
         print(f"Validation samples: {len(val_dataset)}")
         print(f"Batch size: {self.batch_size}")
-        print(f"Total training batches: {len(train_loader)}")
         
-        # Prepare optimizer and scheduler
-        optimizer = AdamW(
-            self.model.parameters(),
-            lr=self.learning_rate,
-            weight_decay=self.weight_decay
+        # Setup output directory
+        if self.output_dir is None:
+            self.output_dir = Path("model_phase/results/roberta_trainer")
+        else:
+            self.output_dir = Path(self.output_dir)
+        
+        # Setup checkpoint directory
+        if save_checkpoints and self.checkpoint_dir:
+            checkpoint_output_dir = self.checkpoint_dir
+        elif save_checkpoints:
+            checkpoint_output_dir = str(self.output_dir / "checkpoints")
+        else:
+            checkpoint_output_dir = None
+        
+        # Configure training arguments
+        training_args = TrainingArguments(
+            output_dir=str(self.output_dir),
+            num_train_epochs=self.num_epochs,
+            per_device_train_batch_size=self.batch_size,
+            per_device_eval_batch_size=self.batch_size,
+            learning_rate=self.learning_rate,
+            weight_decay=self.weight_decay,
+            warmup_steps=self.warmup_steps,
+            logging_dir=str(self.output_dir / "logs"),
+            logging_steps=10,
+            eval_strategy="epoch",
+            save_strategy="epoch" if save_checkpoints else "no",
+            save_total_limit=3 if save_checkpoints else None,
+            load_best_model_at_end=True,
+            metric_for_best_model="f1",
+            greater_is_better=True,
+            report_to="wandb" if (use_wandb and WANDB_AVAILABLE) else "none",
+            fp16=torch.cuda.is_available(),  # Use mixed precision if GPU available
+            dataloader_num_workers=0,
+            disable_tqdm=False,
+            save_safetensors=True,
         )
-        
-        total_steps = len(train_loader) * self.num_epochs
-        scheduler = get_linear_schedule_with_warmup(
-            optimizer,
-            num_warmup_steps=self.warmup_steps,
-            num_training_steps=total_steps
-        )
-        
-        # Load checkpoint if resuming
-        if resume_from_checkpoint:
-            self.load_checkpoint(resume_from_checkpoint, optimizer, scheduler)
         
         print("\n" + "="*60)
-        print("Training Model")
+        print("Training Configuration")
         print("="*60)
         print(f"Epochs: {self.num_epochs}")
-        print(f"Starting epoch: {self.start_epoch + 1}")
         print(f"Learning rate: {self.learning_rate}")
-        print(f"Total steps: {total_steps}")
-        if self.checkpoint_dir:
-            print(f"Checkpoint directory: {self.checkpoint_dir}")
+        print(f"Batch size: {self.batch_size}")
+        print(f"Warmup steps: {self.warmup_steps}")
+        print(f"Weight decay: {self.weight_decay}")
+        print(f"Output directory: {self.output_dir}")
+        if save_checkpoints:
+            print(f"Checkpoint saving: Enabled")
+        print(f"Mixed precision (FP16): {torch.cuda.is_available()}")
         
-        # Training loop
-        best_val_f1 = self.best_val_f1
-        training_stats = []
+        # Setup callbacks
+        callbacks = []
+        if use_wandb and WANDB_AVAILABLE:
+            callbacks.append(WandbCallback(use_wandb=True))
         
-        for epoch in range(self.start_epoch, self.num_epochs):
-            print(f"\n{'='*60}")
-            print(f"Epoch {epoch + 1}/{self.num_epochs}")
-            print(f"{'='*60}")
-            
-            # Training phase
-            train_loss = self._train_epoch(train_loader, optimizer, scheduler, epoch=epoch+1, use_wandb=use_wandb)
-            
-            # Validation phase
-            val_metrics = self._evaluate(val_loader, "Validation")
-            
-            # Track stats
-            epoch_stats = {
-                'epoch': epoch + 1,
-                'train_loss': train_loss,
-                **val_metrics
-            }
-            training_stats.append(epoch_stats)
-            
-            # Log to wandb
-            if use_wandb:
-                log_to_wandb({
-                    'epoch': epoch + 1,
-                    'train_loss': train_loss,
-                    'val_accuracy': val_metrics['accuracy'],
-                    'val_precision': val_metrics['precision'],
-                    'val_recall': val_metrics['recall'],
-                    'val_f1': val_metrics['f1'],
-                    'val_loss': val_metrics['loss']
-                }, use_wandb=True)
-            
-            # Print epoch summary
-            print(f"\nEpoch {epoch + 1} Summary:")
-            print(f"  Train Loss: {train_loss:.4f}")
-            print(f"  Val Accuracy: {val_metrics['accuracy']:.4f}")
-            print(f"  Val F1: {val_metrics['f1']:.4f}")
-            
-            # Save best model
-            if val_metrics['f1'] > best_val_f1:
-                best_val_f1 = val_metrics['f1']
-                print(f"  ✓ New best validation F1: {best_val_f1:.4f}")
-                
-            # Save checkpoint
-            is_best = val_metrics['f1'] >= best_val_f1
-            self.save_checkpoint(epoch, optimizer, scheduler, best_val_f1, is_best=is_best)
+        # Create trainer
+        self.trainer = Trainer(
+            model=self.model,
+            args=training_args,
+            train_dataset=train_dataset,
+            eval_dataset=val_dataset,
+            tokenizer=self.tokenizer,
+            compute_metrics=self.compute_metrics,
+            callbacks=callbacks,
+        )
+        
+        print("\n" + "="*60)
+        print("Starting Training")
+        print("="*60)
+        
+        # Train the model
+        train_result = self.trainer.train(resume_from_checkpoint=resume_from_checkpoint)
+        
+        # Get training metrics
+        metrics = train_result.metrics
+        self.trainer.log_metrics("train", metrics)
+        
+        # Evaluate on validation set
+        print("\n" + "="*60)
+        print("Final Validation")
+        print("="*60)
+        eval_metrics = self.trainer.evaluate()
+        self.trainer.log_metrics("eval", eval_metrics)
         
         print("\n" + "="*60)
         print("Training Complete!")
         print("="*60)
-        print(f"Best Validation F1: {best_val_f1:.4f}")
+        print(f"Best Validation F1: {eval_metrics.get('eval_f1', 0):.4f}")
+        
+        # Convert metrics to training stats format
+        training_stats = [{
+            'train_loss': metrics.get('train_loss', 0),
+            'eval_loss': eval_metrics.get('eval_loss', 0),
+            'eval_accuracy': eval_metrics.get('eval_accuracy', 0),
+            'eval_f1': eval_metrics.get('eval_f1', 0),
+        }]
         
         return training_stats
-    
-    def _train_epoch(self, train_loader, optimizer, scheduler, epoch=None, use_wandb=False):
-        """Train for one epoch."""
-        self.model.train()
-        total_loss = 0
-        
-        progress_bar = tqdm(train_loader, desc="Training")
-        for batch_idx, batch in enumerate(progress_bar):
-            # Move batch to device
-            input_ids = batch['input_ids'].to(self.device)
-            attention_mask = batch['attention_mask'].to(self.device)
-            labels = batch['labels'].to(self.device)
-            
-            # Forward pass
-            outputs = self.model(
-                input_ids=input_ids,
-                attention_mask=attention_mask,
-                labels=labels
-            )
-            loss = outputs.loss
-            
-            # Backward pass
-            optimizer.zero_grad()
-            loss.backward()
-            torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
-            optimizer.step()
-            scheduler.step()
-            
-            total_loss += loss.item()
-            progress_bar.set_postfix({'loss': f'{loss.item():.4f}'})
-            
-            # Log batch metrics to wandb
-            if use_wandb and batch_idx % 10 == 0:  # Log every 10 batches
-                if WANDB_AVAILABLE:
-                    try:
-                        wandb.log({
-                            'batch_loss': loss.item(),
-                            'learning_rate': scheduler.get_last_lr()[0],
-                            'epoch': epoch,
-                            'batch': batch_idx
-                        })
-                    except Exception as e:
-                        # Log error but continue training
-                        if batch_idx == 0:  # Only print once per epoch
-                            print(f"⚠️  Warning: Could not log to wandb: {e}")
-        
-        avg_loss = total_loss / len(train_loader)
-        return avg_loss
-    
-    def _evaluate(self, data_loader, split_name="Validation"):
-        """Evaluate on a dataset."""
-        self.model.eval()
-        all_predictions = []
-        all_labels = []
-        total_loss = 0
-        
-        with torch.no_grad():
-            progress_bar = tqdm(data_loader, desc=f"Evaluating {split_name}")
-            for batch in progress_bar:
-                input_ids = batch['input_ids'].to(self.device)
-                attention_mask = batch['attention_mask'].to(self.device)
-                labels = batch['labels'].to(self.device)
-                
-                outputs = self.model(
-                    input_ids=input_ids,
-                    attention_mask=attention_mask,
-                    labels=labels
-                )
-                
-                total_loss += outputs.loss.item()
-                logits = outputs.logits
-                predictions = torch.argmax(logits, dim=-1)
-                
-                all_predictions.extend(predictions.cpu().numpy())
-                all_labels.extend(labels.cpu().numpy())
-        
-        # Calculate metrics
-        accuracy = accuracy_score(all_labels, all_predictions)
-        precision, recall, f1, _ = precision_recall_fscore_support(
-            all_labels, all_predictions, average='weighted', zero_division=0
-        )
-        
-        metrics = {
-            'accuracy': float(accuracy),
-            'precision': float(precision),
-            'recall': float(recall),
-            'f1': float(f1),
-            'loss': float(total_loss / len(data_loader))
-        }
-        
-        return metrics
     
     def predict(self, texts):
         """
@@ -520,104 +383,84 @@ class RoBERTaSentimentClassifier:
         Returns:
             List of predicted sentiment labels
         """
-        self.model.eval()
+        if self.trainer is None:
+            raise ValueError("Model must be trained before making predictions")
         
+        # Create dataset with dummy labels
         dataset = GameReviewDataset(
             texts,
             ['positive'] * len(texts),  # Dummy labels
             self.tokenizer,
-            self.max_length
+            self.max_length,
+            label2id=self.label2id
         )
-        dataset.label2id = self.label2id
-        dataset.id2label = self.id2label
         
-        loader = DataLoader(dataset, batch_size=self.batch_size, shuffle=False)
+        # Use trainer to predict
+        predictions = self.trainer.predict(dataset)
+        pred_labels = np.argmax(predictions.predictions, axis=1)
         
-        all_predictions = []
-        with torch.no_grad():
-            for batch in tqdm(loader, desc="Predicting"):
-                input_ids = batch['input_ids'].to(self.device)
-                attention_mask = batch['attention_mask'].to(self.device)
-                
-                outputs = self.model(
-                    input_ids=input_ids,
-                    attention_mask=attention_mask
-                )
-                
-                logits = outputs.logits
-                predictions = torch.argmax(logits, dim=-1)
-                all_predictions.extend(predictions.cpu().numpy())
-        
-        # Convert to labels
-        predicted_labels = [self.id2label[pred] for pred in all_predictions]
+        # Convert to label strings
+        predicted_labels = [self.id2label[pred] for pred in pred_labels]
         return predicted_labels
     
     def predict_proba(self, texts):
         """
-        Predict probability for each class.
+        Predict sentiment probabilities for new texts.
         
         Args:
             texts: List of review texts
             
         Returns:
-            Numpy array of probabilities (samples x classes)
+            Array of shape (n_samples, n_classes) with probabilities
         """
-        self.model.eval()
+        if self.trainer is None:
+            raise ValueError("Model must be trained before making predictions")
         
+        # Create dataset with dummy labels
         dataset = GameReviewDataset(
             texts,
             ['positive'] * len(texts),  # Dummy labels
             self.tokenizer,
-            self.max_length
+            self.max_length,
+            label2id=self.label2id
         )
-        dataset.label2id = self.label2id
-        dataset.id2label = self.id2label
         
-        loader = DataLoader(dataset, batch_size=self.batch_size, shuffle=False)
+        # Use trainer to predict
+        predictions = self.trainer.predict(dataset)
         
-        all_probas = []
-        with torch.no_grad():
-            for batch in tqdm(loader, desc="Predicting probabilities"):
-                input_ids = batch['input_ids'].to(self.device)
-                attention_mask = batch['attention_mask'].to(self.device)
-                
-                outputs = self.model(
-                    input_ids=input_ids,
-                    attention_mask=attention_mask
-                )
-                
-                logits = outputs.logits
-                probas = torch.softmax(logits, dim=-1)
-                all_probas.extend(probas.cpu().numpy())
+        # Apply softmax to get probabilities
+        probs = torch.softmax(torch.tensor(predictions.predictions), dim=-1).numpy()
         
-        return np.array(all_probas)
+        return probs
     
     def save(self, output_dir):
         """Save model, tokenizer, and configuration."""
         output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
         
-        # Save model and tokenizer
-        self.model.save_pretrained(output_dir / 'model')
-        self.tokenizer.save_pretrained(output_dir / 'tokenizer')
+        print(f"\nSaving model to {output_dir}")
         
-        # Save config
-        config = {
-            'model_name': self.model_name,
-            'num_labels': self.num_labels,
-            'max_length': self.max_length,
-            'batch_size': self.batch_size,
-            'learning_rate': self.learning_rate,
-            'num_epochs': self.num_epochs,
-            'warmup_steps': self.warmup_steps,
-            'weight_decay': self.weight_decay,
+        if self.trainer is not None:
+            # Use trainer's save method
+            self.trainer.save_model(str(output_dir))
+        else:
+            # Fallback to direct save
+            self.model.save_pretrained(output_dir)
+        
+        # Save tokenizer
+        self.tokenizer.save_pretrained(output_dir)
+        
+        # Save label mappings
+        label_mapping = {
             'label2id': self.label2id,
             'id2label': self.id2label
         }
-        with open(output_dir / 'config.json', 'w') as f:
-            json.dump(config, f, indent=2)
+        with open(output_dir / 'label_mapping.json', 'w') as f:
+            json.dump(label_mapping, f, indent=2)
         
-        print(f"✓ Model saved to {output_dir}")
+        print(f"  ✓ Model saved")
+        print(f"  ✓ Tokenizer saved")
+        print(f"  ✓ Label mapping saved")
     
     @classmethod
     def load(cls, output_dir):
@@ -825,6 +668,7 @@ def main(dataset_name,
         num_epochs=num_epochs,
         warmup_steps=warmup_steps,
         weight_decay=weight_decay,
+        output_dir=output_dir,
         checkpoint_dir=checkpoint_dir
     )
     
@@ -836,7 +680,8 @@ def main(dataset_name,
         val_data['text'],
         val_data['label'],
         use_wandb=wandb_initialized,
-        resume_from_checkpoint=resume_from_checkpoint
+        resume_from_checkpoint=resume_from_checkpoint,
+        save_checkpoints=save_checkpoints
     )
     train_time = time.time() - train_start
     
