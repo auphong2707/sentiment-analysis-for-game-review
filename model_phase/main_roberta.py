@@ -695,6 +695,10 @@ def main(dataset_name,
     
     print(f"\n✓ Training completed in {train_time:.2f}s ({train_time/60:.2f} minutes)")
     
+    # Disable WandB reporting in Trainer to prevent any further automatic logging
+    if model.trainer is not None:
+        model.trainer.args.report_to = []
+    
     # Evaluate on validation set (final metrics)
     val_results = evaluate_classifier(
         model, val_data['text'], val_data['label'], "Validation"
