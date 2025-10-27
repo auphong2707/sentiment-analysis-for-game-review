@@ -25,7 +25,7 @@ DATASET="${HF_DATASET_NAME:-}"
 GRIDSEARCH_SUBSET=0.01
 FINAL_SUBSET=1.0
 OUTPUT_BASE_DIR="model_phase/results"
-USE_WANDB=false
+USE_WANDB=true  # Enable by default
 SKIP_GRIDSEARCH=false
 
 # Parse arguments
@@ -51,6 +51,10 @@ while [[ $# -gt 0 ]]; do
             USE_WANDB=true
             shift
             ;;
+        --no_wandb)
+            USE_WANDB=false
+            shift
+            ;;
         --skip_gridsearch)
             SKIP_GRIDSEARCH=true
             shift
@@ -64,7 +68,8 @@ while [[ $# -gt 0 ]]; do
             echo "  --gridsearch_subset FLOAT    Subset for grid search (default: 0.1)"
             echo "  --final_subset FLOAT         Subset for final training (default: 1.0)"
             echo "  --output_dir DIR             Base output directory (default: model_phase/results)"
-            echo "  --use_wandb                  Use WandB for experiment tracking"
+            echo "  --use_wandb                  Use WandB for experiment tracking (default: enabled)"
+            echo "  --no_wandb                   Disable WandB logging"
             echo "  --skip_gridsearch            Skip grid search and use provided hyperparameters"
             exit 1
             ;;
@@ -86,6 +91,7 @@ echo "Dataset: $DATASET"
 echo "Grid Search Subset: $GRIDSEARCH_SUBSET"
 echo "Final Training Subset: $FINAL_SUBSET"
 echo "Output Directory: $OUTPUT_BASE_DIR"
+echo "WandB Logging: $USE_WANDB"
 echo ""
 
 # Check for GPU

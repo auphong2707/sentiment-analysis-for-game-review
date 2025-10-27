@@ -33,6 +33,14 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv()
 
+# Import wandb (optional dependency)
+try:
+    import wandb
+    WANDB_AVAILABLE = True
+except ImportError:
+    WANDB_AVAILABLE = False
+    wandb = None
+
 # Add project root to Python path
 current_file = Path(__file__).absolute()
 project_root = current_file.parent.parent
@@ -191,7 +199,7 @@ class RoBERTaSentimentClassifier:
         )
         self.model.to(self.device)
         
-    def fit(self, train_texts, train_labels, val_texts, val_labels):
+    def fit(self, train_texts, train_labels, val_texts, val_labels, use_wandb=False):
         """
         Train the model on text data.
         
@@ -200,6 +208,7 @@ class RoBERTaSentimentClassifier:
             train_labels: List of training sentiment labels
             val_texts: List of validation review texts
             val_labels: List of validation sentiment labels
+            use_wandb: Whether to log metrics to WandB
         """
         print("\n" + "="*60)
         print("Preparing Data")
@@ -267,7 +276,7 @@ class RoBERTaSentimentClassifier:
             print(f"{'='*60}")
             
             # Training phase
-            train_loss = self._train_epoch(train_loader, optimizer, scheduler)
+            train_loss = self._train_epoch(train_loader, optimizer, scheduler, epoch=epoch+1, use_wandb=use_wandb)
             
             # Validation phase
             val_metrics = self._evaluate(val_loader, "Validation")
@@ -279,6 +288,18 @@ class RoBERTaSentimentClassifier:
                 **val_metrics
             }
             training_stats.append(epoch_stats)
+            
+            # Log to wandb
+            if use_wandb:
+                log_to_wandb({
+                    'epoch': epoch + 1,
+                    'train_loss': train_loss,
+                    'val_accuracy': val_metrics['accuracy'],
+                    'val_precision': val_metrics['precision'],
+                    'val_recall': val_metrics['recall'],
+                    'val_f1': val_metrics['f1'],
+                    'val_loss': val_metrics['loss']
+                }, use_wandb=True)
             
             # Print epoch summary
             print(f"\nEpoch {epoch + 1} Summary:")
@@ -298,13 +319,13 @@ class RoBERTaSentimentClassifier:
         
         return training_stats
     
-    def _train_epoch(self, train_loader, optimizer, scheduler):
+    def _train_epoch(self, train_loader, optimizer, scheduler, epoch=None, use_wandb=False):
         """Train for one epoch."""
         self.model.train()
         total_loss = 0
         
         progress_bar = tqdm(train_loader, desc="Training")
-        for batch in progress_bar:
+        for batch_idx, batch in enumerate(progress_bar):
             # Move batch to device
             input_ids = batch['input_ids'].to(self.device)
             attention_mask = batch['attention_mask'].to(self.device)
@@ -327,6 +348,21 @@ class RoBERTaSentimentClassifier:
             
             total_loss += loss.item()
             progress_bar.set_postfix({'loss': f'{loss.item():.4f}'})
+            
+            # Log batch metrics to wandb
+            if use_wandb and batch_idx % 10 == 0:  # Log every 10 batches
+                if WANDB_AVAILABLE:
+                    try:
+                        wandb.log({
+                            'batch_loss': loss.item(),
+                            'learning_rate': scheduler.get_last_lr()[0],
+                            'epoch': epoch,
+                            'batch': batch_idx
+                        })
+                    except Exception as e:
+                        # Log error but continue training
+                        if batch_idx == 0:  # Only print once per epoch
+                            print(f"⚠️  Warning: Could not log to wandb: {e}")
         
         avg_loss = total_loss / len(train_loader)
         return avg_loss
@@ -632,21 +668,36 @@ def main(dataset_name,
     output_dir = setup_output_directory(output_dir, model_name="roberta")
     
     # Initialize WandB if requested
-    wandb_initialized = init_wandb_if_available(
-        project_name="game-review-sentiment",
-        experiment_name=f"roberta_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
-        config={
-            "model": MODEL_NAME,
-            "max_length": max_length,
-            "batch_size": batch_size,
-            "learning_rate": learning_rate,
-            "num_epochs": num_epochs,
-            "warmup_steps": warmup_steps,
-            "weight_decay": weight_decay,
-            "subset": subset
-        },
-        use_wandb=use_wandb
-    )
+    wandb_initialized = False
+    if use_wandb and WANDB_AVAILABLE:
+        try:
+            # Get project name from .env or use default
+            wandb_project = os.getenv('WANDB_PROJECT', 'game-review-sentiment')
+            
+            wandb.init(
+                project=wandb_project,
+                name=f"roberta_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+                config={
+                    "model": MODEL_NAME,
+                    "max_length": max_length,
+                    "batch_size": batch_size,
+                    "learning_rate": learning_rate,
+                    "num_epochs": num_epochs,
+                    "warmup_steps": warmup_steps,
+                    "weight_decay": weight_decay,
+                    "subset": subset
+                }
+            )
+            wandb_initialized = True
+            print(f"✓ WandB initialized - Project: {wandb_project}")
+        except Exception as e:
+            print(f"⚠️  Could not initialize WandB: {e}")
+            wandb_initialized = False
+    elif use_wandb and not WANDB_AVAILABLE:
+        print("⚠️  WandB not available. Install with: pip install wandb")
+        wandb_initialized = False
+    else:
+        print("ℹ️  WandB logging disabled")
     
     # Load data
     train_data, val_data, test_data = load_dataset_from_hf(
@@ -674,7 +725,8 @@ def main(dataset_name,
         train_data['text'],
         train_data['label'],
         val_data['text'],
-        val_data['label']
+        val_data['label'],
+        use_wandb=wandb_initialized
     )
     train_time = time.time() - train_start
     
@@ -685,16 +737,98 @@ def main(dataset_name,
         model, val_data['text'], val_data['label'], "Validation"
     )
     
-    # Evaluate on test set (skip during grid search to avoid data leakage)
+    # Conditionally evaluate on test set
     if skip_test_eval:
-        print("\n" + "="*60)
+        print(f"\n{'='*60}")
         print("Skipping test set evaluation (grid search mode)")
-        print("="*60)
-        test_results = {}
+        print(f"{'='*60}")
+        # Create empty test results for consistency
+        test_results = {
+            'test_accuracy': 0.0,
+            'test_precision': 0.0,
+            'test_recall': 0.0,
+            'test_f1': 0.0,
+            'test_inference_time': 0.0,
+            'test_samples_per_second': 0.0,
+            'test_classification_report': {},
+            'test_confusion_matrix': []
+        }
     else:
+        # Evaluate on test set
         test_results = evaluate_classifier(
             model, test_data['text'], test_data['label'], "Test"
         )
+    
+    # Log final results to wandb
+    if wandb_initialized and WANDB_AVAILABLE:
+        # Always log validation results
+        wandb_metrics = {
+            'final_val_accuracy': val_results['validation_accuracy'],
+            'final_val_f1': val_results['validation_f1'],
+            'final_val_precision': val_results['validation_precision'],
+            'final_val_recall': val_results['validation_recall'],
+            'training_time_seconds': train_time,
+            'training_time_minutes': train_time / 60
+        }
+        
+        # Only log test results if we evaluated on test set
+        if not skip_test_eval:
+            wandb_metrics.update({
+                'final_test_accuracy': test_results['test_accuracy'],
+                'final_test_f1': test_results['test_f1'],
+                'final_test_precision': test_results['test_precision'],
+                'final_test_recall': test_results['test_recall']
+            })
+        
+        log_to_wandb(wandb_metrics, use_wandb=True)
+        
+        # Log confusion matrix and additional metrics to wandb (only if test was evaluated)
+        if not skip_test_eval:
+            try:
+                # Create confusion matrix data for test set
+                class_names = ['negative', 'mixed', 'positive']
+                cm = np.array(test_results['test_confusion_matrix'])
+                
+                # Create a table representation of the confusion matrix
+                cm_data = []
+                for i, true_label in enumerate(class_names):
+                    row = [true_label] + [int(cm[i][j]) for j in range(len(class_names))]
+                    cm_data.append(row)
+                
+                cm_table = wandb.Table(
+                    data=cm_data,
+                    columns=["True \\ Predicted"] + class_names
+                )
+                
+                # Log the confusion matrix table
+                wandb.log({"test_confusion_matrix_table": cm_table})
+                
+                # Also log as a simple nested list for easy access
+                wandb.log({"test_confusion_matrix_raw": cm.tolist()})
+                
+                # Log per-class metrics in a single call
+                if 'test_classification_report' in test_results:
+                    class_report = test_results['test_classification_report']
+                    per_class_metrics = {}
+                    for class_name in ['positive', 'mixed', 'negative']:
+                        if class_name in class_report:
+                            metrics = class_report[class_name]
+                            per_class_metrics[f'test_{class_name}_precision'] = metrics['precision']
+                            per_class_metrics[f'test_{class_name}_recall'] = metrics['recall']
+                            per_class_metrics[f'test_{class_name}_f1'] = metrics['f1-score']
+                            per_class_metrics[f'test_{class_name}_support'] = metrics['support']
+                    
+                    if per_class_metrics:
+                        wandb.log(per_class_metrics)
+                
+                # Set summary metrics (these persist across runs)
+                if training_stats and len(training_stats) > 0:
+                    wandb.summary['best_val_f1'] = max([stat['f1'] for stat in training_stats])
+                wandb.summary['final_test_f1'] = test_results['test_f1']
+                wandb.summary['final_test_accuracy'] = test_results['test_accuracy']
+                
+            except Exception as e:
+                print(f"⚠️  Could not log additional metrics to wandb: {e}")
     
     # Compile all results
     all_results = {
@@ -723,9 +857,13 @@ def main(dataset_name,
     save_results_to_json(all_results, output_dir / 'results.json')
     model.save(output_dir)
     
-    # Log to WandB
-    log_to_wandb(all_results, use_wandb=wandb_initialized)
-    finish_wandb(use_wandb=wandb_initialized)
+    # Finish WandB run
+    if wandb_initialized and WANDB_AVAILABLE:
+        try:
+            wandb.finish()
+            print("✓ WandB run finished")
+        except Exception as e:
+            print(f"⚠️  Error finishing WandB run: {e}")
     
     # Print summary
     print_training_summary(all_results, output_dir)
@@ -817,15 +955,15 @@ if __name__ == "__main__":
         help='Skip uploading results to HuggingFace Hub'
     )
     parser.add_argument(
-        '--skip_test_eval',
-        action='store_true',
-        help='Skip test set evaluation (for grid search to avoid data leakage)'
-    )
-    parser.add_argument(
         '--hf_repo',
         type=str,
         default=None,
         help='HuggingFace repository name for results (default: auto-generated)'
+    )
+    parser.add_argument(
+        '--skip_test_eval',
+        action='store_true',
+        help='Skip test set evaluation (useful for grid search)'
     )
     
     args = parser.parse_args()

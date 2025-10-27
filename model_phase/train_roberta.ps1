@@ -45,10 +45,16 @@ param(
     [string]$OutputDir = $null,
     
     [Parameter(Mandatory=$false)]
-    [switch]$UseWandb,
+    [switch]$UseWandb = $true,
     
     [Parameter(Mandatory=$false)]
-    [switch]$NoUpload
+    [switch]$NoWandb,
+    
+    [Parameter(Mandatory=$false)]
+    [switch]$NoUpload,
+    
+    [Parameter(Mandatory=$false)]
+    [switch]$SkipTestEval
 )
 
 $ErrorActionPreference = "Stop"
@@ -108,12 +114,20 @@ if ($OutputDir) {
     $TrainArgs += @("--output_dir", $OutputDir)
 }
 
-if ($UseWandb) {
+# Enable WandB by default unless explicitly disabled
+if (-not $NoWandb) {
     $TrainArgs += "--use_wandb"
+    Write-Host "  WandB Logging: Enabled" -ForegroundColor Green
+} else {
+    Write-Host "  WandB Logging: Disabled" -ForegroundColor Yellow
 }
 
 if ($NoUpload) {
     $TrainArgs += "--no_upload"
+}
+
+if ($SkipTestEval) {
+    $TrainArgs += "--skip_test_eval"
 }
 
 Write-Host "============================================================" -ForegroundColor Green
