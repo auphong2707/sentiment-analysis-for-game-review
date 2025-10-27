@@ -164,6 +164,7 @@ if [ "$SKIP_GRIDSEARCH" = false ]; then
         EXPERIMENT_NAME="roberta_ex_${CURRENT}"
         
         # Build command (no HuggingFace upload during grid search)
+        # Always disable checkpoints during grid search to save disk space
         CMD="python model_phase/main_roberta.py \
             --dataset $DATASET \
             --max_length $MAX_LENGTH \
@@ -176,16 +177,12 @@ if [ "$SKIP_GRIDSEARCH" = false ]; then
             --output_dir $OUTPUT_DIR \
             --no_upload \
             --skip_test_eval \
+            --no_checkpoints \
             --experiment_name $EXPERIMENT_NAME"
                 
                 # Add wandb if specified
                 if [ "$USE_WANDB" = true ]; then
                     CMD="$CMD --use_wandb"
-                fi
-                
-                # Add checkpoint options
-                if [ "$NO_CHECKPOINTS" = true ]; then
-                    CMD="$CMD --no_checkpoints"
                 fi
                 
                 # Run training

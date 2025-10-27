@@ -300,7 +300,7 @@ class RoBERTaSentimentClassifier:
             logging_steps=10,
             eval_strategy="epoch",
             save_strategy="epoch" if save_checkpoints else "no",
-            save_total_limit=3 if save_checkpoints else None,
+            save_total_limit=2 if save_checkpoints else None,
             load_best_model_at_end=True,
             metric_for_best_model="f1",
             greater_is_better=True,
