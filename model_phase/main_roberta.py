@@ -373,17 +373,19 @@ class RoBERTaSentimentClassifier:
         
         return training_stats
     
-    def predict(self, texts):
+    def predict(self, texts, use_trainer=True):
         """
         Predict sentiment for new texts.
         
         Args:
             texts: List of review texts
+            use_trainer: If True, use Trainer.predict() (may log to WandB). 
+                        If False, use direct model inference (no logging).
             
         Returns:
             List of predicted sentiment labels
         """
-        if self.trainer is None:
+        if self.model is None:
             raise ValueError("Model must be trained before making predictions")
         
         # Create dataset with dummy labels
@@ -395,9 +397,28 @@ class RoBERTaSentimentClassifier:
             label2id=self.label2id
         )
         
-        # Use trainer to predict
-        predictions = self.trainer.predict(dataset)
-        pred_labels = np.argmax(predictions.predictions, axis=1)
+        if use_trainer and self.trainer is not None:
+            # Use trainer to predict (may trigger logging)
+            predictions = self.trainer.predict(dataset)
+            pred_labels = np.argmax(predictions.predictions, axis=1)
+        else:
+            # Direct model inference without trainer (no logging)
+            self.model.eval()
+            device = next(self.model.parameters()).device
+            
+            pred_labels = []
+            with torch.no_grad():
+                for i in range(len(dataset)):
+                    item = dataset[i]
+                    input_ids = item['input_ids'].unsqueeze(0).to(device)
+                    attention_mask = item['attention_mask'].unsqueeze(0).to(device)
+                    
+                    outputs = self.model(input_ids=input_ids, attention_mask=attention_mask)
+                    logits = outputs.logits
+                    pred_label = torch.argmax(logits, dim=-1).item()
+                    pred_labels.append(pred_label)
+            
+            pred_labels = np.array(pred_labels)
         
         # Convert to label strings
         predicted_labels = [self.id2label[pred] for pred in pred_labels]
@@ -491,7 +512,7 @@ class RoBERTaSentimentClassifier:
         return model
 
 
-def evaluate_classifier(model, texts, labels, split_name="Test"):
+def evaluate_classifier(model, texts, labels, split_name="Test", use_trainer_predict=True):
     """
     Evaluate a RoBERTa classifier and return comprehensive metrics.
     
@@ -500,6 +521,8 @@ def evaluate_classifier(model, texts, labels, split_name="Test"):
         texts: List of text samples
         labels: True labels
         split_name: Name of the split for display
+        use_trainer_predict: If True, use Trainer.predict() (may log to WandB).
+                           If False, use direct model inference (no logging).
         
     Returns:
         Dictionary containing all evaluation metrics
@@ -510,7 +533,7 @@ def evaluate_classifier(model, texts, labels, split_name="Test"):
     
     # Predict
     start_time = time.time()
-    predictions = model.predict(texts)
+    predictions = model.predict(texts, use_trainer=use_trainer_predict)
     inference_time = time.time() - start_time
     
     # Convert string labels to indices for sklearn metrics
@@ -700,8 +723,12 @@ def main(dataset_name,
         model.trainer.args.report_to = []
     
     # Evaluate on validation set (final metrics)
+    # In grid search mode (skip_test_eval=True), use direct inference to avoid ANY wandb logging
+    # In final training mode, we can use trainer.predict since WandB will be finished before test eval
+    use_trainer_predict = not skip_test_eval
     val_results = evaluate_classifier(
-        model, val_data['text'], val_data['label'], "Validation"
+        model, val_data['text'], val_data['label'], "Validation",
+        use_trainer_predict=use_trainer_predict
     )
     
     # Log validation results and training time to WandB (before finishing the run)
@@ -748,9 +775,11 @@ def main(dataset_name,
             'test_confusion_matrix': []
         }
     else:
-        # Evaluate on test set (WandB already finished, so no logging will occur)
+        # Evaluate on test set (final training mode only)
+        # WandB is already finished, but we still want test evaluation to run normally
         test_results = evaluate_classifier(
-            model, test_data['text'], test_data['label'], "Test"
+            model, test_data['text'], test_data['label'], "Test",
+            use_trainer_predict=True  # Use normal prediction in final training
         )
     
     # Compile all results
