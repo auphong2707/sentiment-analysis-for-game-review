@@ -700,6 +700,33 @@ def main(dataset_name,
         model, val_data['text'], val_data['label'], "Validation"
     )
     
+    # Log validation results and training time to WandB (before finishing the run)
+    if wandb_initialized and WANDB_AVAILABLE:
+        wandb_metrics = {
+            'final_val_accuracy': val_results['validation_accuracy'],
+            'final_val_f1': val_results['validation_f1'],
+            'final_val_precision': val_results['validation_precision'],
+            'final_val_recall': val_results['validation_recall'],
+            'training_time_seconds': train_time,
+            'training_time_minutes': train_time / 60
+        }
+        log_to_wandb(wandb_metrics, use_wandb=True)
+        
+        # Set summary metrics
+        if training_stats and len(training_stats) > 0:
+            wandb.summary['best_val_f1'] = max([stat.get('eval_f1', stat.get('f1', 0)) for stat in training_stats])
+        wandb.summary['final_val_f1'] = val_results['validation_f1']
+        wandb.summary['final_val_accuracy'] = val_results['validation_accuracy']
+    
+    # Finish WandB run NOW (before any test evaluation) to prevent test metrics from being logged
+    if wandb_initialized and WANDB_AVAILABLE:
+        try:
+            wandb.finish()
+            print("✓ WandB run finished")
+            wandb_initialized = False  # Mark as finished to prevent double-finish
+        except Exception as e:
+            print(f"⚠️  Error finishing WandB run: {e}")
+    
     # Conditionally evaluate on test set
     if skip_test_eval:
         print(f"\n{'='*60}")
@@ -717,81 +744,10 @@ def main(dataset_name,
             'test_confusion_matrix': []
         }
     else:
-        # Evaluate on test set
+        # Evaluate on test set (WandB already finished, so no logging will occur)
         test_results = evaluate_classifier(
             model, test_data['text'], test_data['label'], "Test"
         )
-    
-    # Log final results to wandb
-    if wandb_initialized and WANDB_AVAILABLE:
-        # Always log validation results
-        wandb_metrics = {
-            'final_val_accuracy': val_results['validation_accuracy'],
-            'final_val_f1': val_results['validation_f1'],
-            'final_val_precision': val_results['validation_precision'],
-            'final_val_recall': val_results['validation_recall'],
-            'training_time_seconds': train_time,
-            'training_time_minutes': train_time / 60
-        }
-        
-        # Only log test results if we evaluated on test set
-        if not skip_test_eval:
-            wandb_metrics.update({
-                'final_test_accuracy': test_results['test_accuracy'],
-                'final_test_f1': test_results['test_f1'],
-                'final_test_precision': test_results['test_precision'],
-                'final_test_recall': test_results['test_recall']
-            })
-        
-        log_to_wandb(wandb_metrics, use_wandb=True)
-        
-        # Log confusion matrix and additional metrics to wandb (only if test was evaluated)
-        if not skip_test_eval:
-            try:
-                # Create confusion matrix data for test set
-                class_names = ['negative', 'mixed', 'positive']
-                cm = np.array(test_results['test_confusion_matrix'])
-                
-                # Create a table representation of the confusion matrix
-                cm_data = []
-                for i, true_label in enumerate(class_names):
-                    row = [true_label] + [int(cm[i][j]) for j in range(len(class_names))]
-                    cm_data.append(row)
-                
-                cm_table = wandb.Table(
-                    data=cm_data,
-                    columns=["True \\ Predicted"] + class_names
-                )
-                
-                # Log the confusion matrix table
-                wandb.log({"test_confusion_matrix_table": cm_table})
-                
-                # Also log as a simple nested list for easy access
-                wandb.log({"test_confusion_matrix_raw": cm.tolist()})
-                
-                # Log per-class metrics in a single call
-                if 'test_classification_report' in test_results:
-                    class_report = test_results['test_classification_report']
-                    per_class_metrics = {}
-                    for class_name in ['positive', 'mixed', 'negative']:
-                        if class_name in class_report:
-                            metrics = class_report[class_name]
-                            per_class_metrics[f'test_{class_name}_precision'] = metrics['precision']
-                            per_class_metrics[f'test_{class_name}_recall'] = metrics['recall']
-                            per_class_metrics[f'test_{class_name}_f1'] = metrics['f1-score']
-                            per_class_metrics[f'test_{class_name}_support'] = metrics['support']
-                    
-                    if per_class_metrics:
-                        wandb.log(per_class_metrics)
-                
-                # Set summary metrics (these persist across runs)
-                if training_stats and len(training_stats) > 0:
-                    wandb.summary['best_val_f1'] = max([stat['f1'] for stat in training_stats])
-                wandb.summary['final_test_f1'] = test_results['test_f1']
-                wandb.summary['final_test_accuracy'] = test_results['test_accuracy']
-                
-            except Exception as e:
-                print(f"⚠️  Could not log additional metrics to wandb: {e}")
     
     # Compile all results
     all_results = {
@@ -820,13 +776,7 @@ def main(dataset_name,
     save_results_to_json(all_results, output_dir / 'results.json')
     model.save(output_dir)
     
-    # Finish WandB run
-    if wandb_initialized and WANDB_AVAILABLE:
-        try:
-            wandb.finish()
-            print("✓ WandB run finished")
-        except Exception as e:
-            print(f"⚠️  Error finishing WandB run: {e}")
+    # WandB run already finished earlier (no need to finish again)
     
     # Print summary
     print_training_summary(all_results, output_dir)
