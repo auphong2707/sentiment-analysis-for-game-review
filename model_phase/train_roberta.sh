@@ -160,6 +160,9 @@ if [ "$SKIP_GRIDSEARCH" = false ]; then
         # Create unique output directory
         OUTPUT_DIR="$GRIDSEARCH_DIR/config_${CURRENT}_LR${LR_VALUE}"
         
+        # Create experiment name for WandB
+        EXPERIMENT_NAME="roberta_ex_${CURRENT}"
+        
         # Build command (no HuggingFace upload during grid search)
         CMD="python model_phase/main_roberta.py \
             --dataset $DATASET \
@@ -172,7 +175,8 @@ if [ "$SKIP_GRIDSEARCH" = false ]; then
             --subset $GRIDSEARCH_SUBSET \
             --output_dir $OUTPUT_DIR \
             --no_upload \
-            --skip_test_eval"
+            --skip_test_eval \
+            --experiment_name $EXPERIMENT_NAME"
                 
                 # Add wandb if specified
                 if [ "$USE_WANDB" = true ]; then
@@ -293,6 +297,9 @@ echo "Training on $FINAL_SUBSET subset with best hyperparameters..."
 echo "This model will be uploaded to HuggingFace Hub."
 echo ""
 
+# Create experiment name for final training
+FINAL_EXPERIMENT_NAME="roberta_official_${BEST_LEARNING_RATE}"
+
 # Build final training command
 FINAL_CMD="python model_phase/main_roberta.py \
     --dataset $DATASET \
@@ -302,7 +309,8 @@ FINAL_CMD="python model_phase/main_roberta.py \
     --num_epochs $NUM_EPOCHS \
     --warmup_steps $WARMUP_STEPS \
     --weight_decay $WEIGHT_DECAY \
-    --subset $FINAL_SUBSET"
+    --subset $FINAL_SUBSET \
+    --experiment_name $FINAL_EXPERIMENT_NAME"
 
 if [ "$USE_WANDB" = true ]; then
     FINAL_CMD="$FINAL_CMD --use_wandb"

@@ -586,7 +586,8 @@ def main(dataset_name,
          hf_repo=None,
          skip_test_eval=False,
          save_checkpoints=True,
-         resume_from_checkpoint=None):
+         resume_from_checkpoint=None,
+         experiment_name=None):
     """
     Main training and evaluation pipeline for RoBERTa.
     
@@ -606,6 +607,7 @@ def main(dataset_name,
         skip_test_eval: Whether to skip test set evaluation (for grid search)
         save_checkpoints: Whether to save training checkpoints
         resume_from_checkpoint: Path to checkpoint file to resume training from
+        experiment_name: Custom experiment name for WandB (default: auto-generated)
     """
     print("\n" + "="*60)
     print("RoBERTa Fine-tuning for Sentiment Analysis")
@@ -621,9 +623,15 @@ def main(dataset_name,
             # Get project name from .env or use default
             wandb_project = os.getenv('WANDB_PROJECT', 'game-review-sentiment')
             
+            # Use custom experiment name or generate default
+            if experiment_name:
+                run_name = experiment_name
+            else:
+                run_name = f"roberta_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            
             wandb.init(
                 project=wandb_project,
-                name=f"roberta_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+                name=run_name,
                 config={
                     "model": MODEL_NAME,
                     "max_length": max_length,
@@ -636,7 +644,7 @@ def main(dataset_name,
                 }
             )
             wandb_initialized = True
-            print(f"✓ WandB initialized - Project: {wandb_project}")
+            print(f"✓ WandB initialized - Project: {wandb_project}, Run: {run_name}")
         except Exception as e:
             print(f"⚠️  Could not initialize WandB: {e}")
             wandb_initialized = False
@@ -937,6 +945,12 @@ if __name__ == "__main__":
         default=None,
         help='Path to checkpoint file to resume training from'
     )
+    parser.add_argument(
+        '--experiment_name',
+        type=str,
+        default=None,
+        help='Custom experiment name for WandB (default: auto-generated)'
+    )
     
     args = parser.parse_args()
     
@@ -965,5 +979,6 @@ if __name__ == "__main__":
         hf_repo=args.hf_repo,
         skip_test_eval=args.skip_test_eval,
         save_checkpoints=save_checkpoints,
-        resume_from_checkpoint=args.resume_from_checkpoint
+        resume_from_checkpoint=args.resume_from_checkpoint,
+        experiment_name=args.experiment_name
     )

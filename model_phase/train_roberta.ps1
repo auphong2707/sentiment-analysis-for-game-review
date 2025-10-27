@@ -1,6 +1,16 @@
 # RoBERTa Training Script (PowerShell)
-# Fine-tunes RoBERTa for sentiment analysis on game reviews
+# Fine-tunes RoBERTa for sentiment analysis with automatic hyperparameter tuning via grid search
 # Usage: .\model_phase\train_roberta.ps1 -Dataset "your-username/game-reviews-sentiment"
+
+# RoBERTa parameters (constants - not tuned)
+$MAX_LENGTH = 256
+$BATCH_SIZE = 32
+$NUM_EPOCHS = 3
+$WARMUP_STEPS = 0
+$WEIGHT_DECAY = 0.01
+
+# Grid search parameters (tune learning rate for RoBERTa)
+$LEARNING_RATE_VALUES = @(1e-5, 2e-5, 3e-5, 5e-5)
 
 # Load dataset from .env if available
 $envFile = ".env"
@@ -18,43 +28,22 @@ param(
     [string]$Dataset = $envDataset,
     
     [Parameter(Mandatory=$false)]
-    [string]$ModelName = "roberta-base",
+    [double]$GridSearchSubset = 0.01,
     
     [Parameter(Mandatory=$false)]
-    [int]$MaxLength = 512,
+    [double]$FinalSubset = 1.0,
     
     [Parameter(Mandatory=$false)]
-    [int]$BatchSize = 16,
+    [string]$OutputBaseDir = "model_phase\results",
     
     [Parameter(Mandatory=$false)]
-    [double]$LearningRate = 0.00002,
-    
-    [Parameter(Mandatory=$false)]
-    [int]$NumEpochs = 3,
-    
-    [Parameter(Mandatory=$false)]
-    [int]$WarmupSteps = 0,
-    
-    [Parameter(Mandatory=$false)]
-    [double]$WeightDecay = 0.01,
-    
-    [Parameter(Mandatory=$false)]
-    [double]$Subset = 1.0,
-    
-    [Parameter(Mandatory=$false)]
-    [string]$OutputDir = $null,
-    
-    [Parameter(Mandatory=$false)]
-    [switch]$UseWandb = $true,
+    [switch]$UseWandb,
     
     [Parameter(Mandatory=$false)]
     [switch]$NoWandb,
     
     [Parameter(Mandatory=$false)]
-    [switch]$NoUpload,
-    
-    [Parameter(Mandatory=$false)]
-    [switch]$SkipTestEval,
+    [switch]$SkipGridSearch,
     
     [Parameter(Mandatory=$false)]
     [string]$ResumeFromCheckpoint = $null,
@@ -67,32 +56,26 @@ $ErrorActionPreference = "Stop"
 
 # Validate dataset
 if (-not $Dataset) {
-    Write-Host "Error: --dataset is required (not found in .env or command line)" -ForegroundColor Red
+    Write-Host "Error: Dataset is required (not found in .env or command line)" -ForegroundColor Red
     Write-Host "Usage: .\model_phase\train_roberta.ps1 -Dataset your-username/game-reviews-sentiment"
     Write-Host "Or set HF_DATASET_NAME in .env file"
     exit 1
 }
 
+# Determine WandB setting
+$UseWandbFlag = (-not $NoWandb) -or $UseWandb
+
 Write-Host "============================================================" -ForegroundColor Cyan
-Write-Host "RoBERTa Fine-tuning for Sentiment Analysis" -ForegroundColor Cyan
+Write-Host "RoBERTa Model Training" -ForegroundColor Cyan
 Write-Host "============================================================" -ForegroundColor Cyan
-Write-Host ""
-Write-Host "Configuration:" -ForegroundColor Yellow
-Write-Host "  Dataset: $Dataset"
-Write-Host "  Model: $ModelName"
-Write-Host "  Max Length: $MaxLength"
-Write-Host "  Batch Size: $BatchSize"
-Write-Host "  Learning Rate: $LearningRate"
-Write-Host "  Epochs: $NumEpochs"
-Write-Host "  Warmup Steps: $WarmupSteps"
-Write-Host "  Weight Decay: $WeightDecay"
-Write-Host "  Data Subset: $Subset"
-if ($OutputDir) {
-    Write-Host "  Output Directory: $OutputDir"
-}
-Write-Host "  Checkpoints: $(if ($NoCheckpoints) { 'Disabled' } else { 'Enabled' })"
+Write-Host "Dataset: $Dataset"
+Write-Host "Grid Search Subset: $GridSearchSubset"
+Write-Host "Final Training Subset: $FinalSubset"
+Write-Host "Output Directory: $OutputBaseDir"
+Write-Host "WandB Logging: $(if ($UseWandbFlag) { 'Enabled' } else { 'Disabled' })"
+Write-Host "Checkpoints: $(if ($NoCheckpoints) { 'Disabled' } else { 'Enabled' })"
 if ($ResumeFromCheckpoint) {
-    Write-Host "  Resume from: $ResumeFromCheckpoint"
+    Write-Host "Resume from: $ResumeFromCheckpoint"
 }
 Write-Host ""
 
@@ -100,75 +83,264 @@ Write-Host ""
 Write-Host "Checking for GPU availability..." -ForegroundColor Cyan
 try {
     $gpuCheck = python -c "import torch; print(f'GPU Available: {torch.cuda.is_available()}'); print(f'GPU Name: {torch.cuda.get_device_name(0) if torch.cuda.is_available() else \"N/A\"}')" 2>&1
-    Write-Host $gpuCheck -ForegroundColor Green
+    Write-Host $gpuCheck
 } catch {
     Write-Host "Warning: Could not check GPU availability" -ForegroundColor Yellow
 }
 Write-Host ""
 
-# Build training command
-$TrainArgs = @(
-    "model_phase\main_roberta.py",
-    "--dataset", $Dataset,
-    "--model_name", $ModelName,
-    "--max_length", $MaxLength,
-    "--batch_size", $BatchSize,
-    "--learning_rate", $LearningRate,
-    "--num_epochs", $NumEpochs,
-    "--warmup_steps", $WarmupSteps,
-    "--weight_decay", $WeightDecay,
-    "--subset", $Subset
-)
-
-if ($OutputDir) {
-    $TrainArgs += @("--output_dir", $OutputDir)
-}
-
-# Enable WandB by default unless explicitly disabled
-if (-not $NoWandb) {
-    $TrainArgs += "--use_wandb"
-    Write-Host "  WandB Logging: Enabled" -ForegroundColor Green
-} else {
-    Write-Host "  WandB Logging: Disabled" -ForegroundColor Yellow
-}
-
-if ($NoUpload) {
-    $TrainArgs += "--no_upload"
-}
-
-if ($SkipTestEval) {
-    $TrainArgs += "--skip_test_eval"
-}
-
-if ($NoCheckpoints) {
-    $TrainArgs += "--no_checkpoints"
-}
-
-if ($ResumeFromCheckpoint) {
-    $TrainArgs += @("--resume_from_checkpoint", $ResumeFromCheckpoint)
-}
-
-Write-Host "============================================================" -ForegroundColor Green
-Write-Host "Starting Training" -ForegroundColor Green
-Write-Host "============================================================" -ForegroundColor Green
-Write-Host ""
-
-# Run training
-& python $TrainArgs
-
-if ($LASTEXITCODE -ne 0) {
+# Step 1: Grid Search (if not skipped)
+if (-not $SkipGridSearch) {
+    Write-Host "============================================================" -ForegroundColor Cyan
+    Write-Host "STEP 1/3: Running Grid Search" -ForegroundColor Cyan
+    Write-Host "============================================================" -ForegroundColor Cyan
+    Write-Host "Finding best hyperparameters on $GridSearchSubset subset..."
     Write-Host ""
-    Write-Host "Error: Training failed" -ForegroundColor Red
+    
+    $GridSearchDir = Join-Path $OutputBaseDir "gridsearch"
+    
+    # Results file
+    $ResultsFile = Join-Path $GridSearchDir "gridsearch_results.txt"
+    New-Item -ItemType Directory -Path $GridSearchDir -Force | Out-Null
+    
+    "Grid Search Results - $(Get-Date)" | Out-File -FilePath $ResultsFile
+    "Dataset: $Dataset" | Out-File -FilePath $ResultsFile -Append
+    "Subset: $GridSearchSubset" | Out-File -FilePath $ResultsFile -Append
+    "==========================================" | Out-File -FilePath $ResultsFile -Append
+    "" | Out-File -FilePath $ResultsFile -Append
+    
+    # Best results tracking
+    $BestF1 = 0
+    $BestConfig = ""
+    $BestOutputDir = ""
+    
+    # Counter
+    $TotalConfigs = $LEARNING_RATE_VALUES.Count
+    $Current = 0
+    
+    Write-Host "Total configurations to test: $TotalConfigs"
+    Write-Host "RoBERTa Settings (fixed): max_length=$MAX_LENGTH, batch_size=$BATCH_SIZE, epochs=$NUM_EPOCHS"
+    Write-Host ""
+    
+    # Grid search loop
+    foreach ($LrValue in $LEARNING_RATE_VALUES) {
+        $Current++
+        
+        Write-Host "==========================================" -ForegroundColor Yellow
+        Write-Host "Configuration $Current/$TotalConfigs" -ForegroundColor Yellow
+        Write-Host "==========================================" -ForegroundColor Yellow
+        Write-Host "Learning Rate: $LrValue"
+        Write-Host ""
+        
+        # Create unique output directory
+        $OutputDir = Join-Path $GridSearchDir "config_${Current}_LR${LrValue}"
+        
+        # Create experiment name for WandB
+        $ExperimentName = "roberta_ex_${Current}"
+        
+        # Build command (no HuggingFace upload during grid search)
+        $TrainArgs = @(
+            "model_phase\main_roberta.py",
+            "--dataset", $Dataset,
+            "--max_length", $MAX_LENGTH,
+            "--batch_size", $BATCH_SIZE,
+            "--learning_rate", $LrValue,
+            "--num_epochs", $NUM_EPOCHS,
+            "--warmup_steps", $WARMUP_STEPS,
+            "--weight_decay", $WEIGHT_DECAY,
+            "--subset", $GridSearchSubset,
+            "--output_dir", $OutputDir,
+            "--no_upload",
+            "--skip_test_eval",
+            "--experiment_name", $ExperimentName
+        )
+        
+        # Add wandb if specified
+        if ($UseWandbFlag) {
+            $TrainArgs += "--use_wandb"
+        }
+        
+        # Add checkpoint options
+        if ($NoCheckpoints) {
+            $TrainArgs += "--no_checkpoints"
+        }
+        
+        # Run training
+        Write-Host "Running: python $($TrainArgs -join ' ')"
+        & python $TrainArgs
+        
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "Error: Training failed for configuration $Current" -ForegroundColor Red
+            "Configuration $Current`: ERROR - Training failed" | Out-File -FilePath $ResultsFile -Append
+            "" | Out-File -FilePath $ResultsFile -Append
+            continue
+        }
+        
+        # Extract validation F1 score from results.json
+        $ResultsJson = Join-Path $OutputDir "results.json"
+        if (Test-Path $ResultsJson) {
+            $Results = Get-Content $ResultsJson | ConvertFrom-Json
+            $ValF1 = [math]::Round($Results.validation_f1, 4)
+            $ValAcc = [math]::Round($Results.validation_accuracy, 4)
+            $TrainTime = [math]::Round($Results.training_time, 2)
+            
+            Write-Host ""
+            Write-Host "Results:"
+            Write-Host "  Validation F1: $ValF1"
+            Write-Host "  Validation Accuracy: $ValAcc"
+            Write-Host "  Training Time: ${TrainTime}s"
+            Write-Host ""
+            
+            # Log to results file
+            "Configuration $Current`:" | Out-File -FilePath $ResultsFile -Append
+            "  Learning Rate: $LrValue" | Out-File -FilePath $ResultsFile -Append
+            "  Validation F1: $ValF1" | Out-File -FilePath $ResultsFile -Append
+            "  Validation Accuracy: $ValAcc" | Out-File -FilePath $ResultsFile -Append
+            "  Training Time: ${TrainTime}s" | Out-File -FilePath $ResultsFile -Append
+            "  Output: $OutputDir" | Out-File -FilePath $ResultsFile -Append
+            "" | Out-File -FilePath $ResultsFile -Append
+            
+            # Update best if this is better
+            if ($ValF1 -gt $BestF1) {
+                $BestF1 = $ValF1
+                $BestConfig = "learning_rate=$LrValue"
+                $BestOutputDir = $OutputDir
+                $BestLearningRate = $LrValue
+                Write-Host "*** NEW BEST CONFIGURATION! ***" -ForegroundColor Green
+                Write-Host ""
+            }
+        } else {
+            Write-Host "Error: Results file not found at $ResultsJson" -ForegroundColor Red
+            "Configuration $Current`: ERROR - Results file not found" | Out-File -FilePath $ResultsFile -Append
+            "" | Out-File -FilePath $ResultsFile -Append
+        }
+        
+        Write-Host ""
+    }
+    
+    # Save best config summary
+    $BestConfigFile = Join-Path $GridSearchDir "best_config.txt"
+    "Best Configuration Found" | Out-File -FilePath $BestConfigFile
+    "======================" | Out-File -FilePath $BestConfigFile -Append
+    "Configuration: $BestConfig" | Out-File -FilePath $BestConfigFile -Append
+    "Validation F1: $BestF1" | Out-File -FilePath $BestConfigFile -Append
+    "Model Directory: $BestOutputDir" | Out-File -FilePath $BestConfigFile -Append
+    
+    Write-Host "All results saved to: $ResultsFile"
+    Write-Host "Best configuration saved to: $BestConfigFile"
+    
+    Write-Host ""
+    Write-Host "✓ Grid search complete!" -ForegroundColor Green
+    Write-Host ""
+} else {
+    Write-Host "============================================================" -ForegroundColor Cyan
+    Write-Host "STEP 1/3: Skipping Grid Search" -ForegroundColor Cyan
+    Write-Host "============================================================" -ForegroundColor Cyan
+    Write-Host "Using provided hyperparameters..."
+    Write-Host ""
+    $GridSearchDir = Join-Path $OutputBaseDir "gridsearch"
+}
+
+# Step 2: Extract Best Configuration
+Write-Host "============================================================" -ForegroundColor Cyan
+Write-Host "STEP 2/3: Extracting Best Configuration" -ForegroundColor Cyan
+Write-Host "============================================================" -ForegroundColor Cyan
+
+$BestConfigFile = Join-Path $GridSearchDir "best_config.txt"
+
+if (-not (Test-Path $BestConfigFile)) {
+    Write-Host "Error: Best config file not found at $BestConfigFile" -ForegroundColor Red
+    Write-Host "Make sure grid search completed successfully."
     exit 1
 }
 
+Write-Host "Reading best configuration from: $BestConfigFile"
 Write-Host ""
-Write-Host "============================================================" -ForegroundColor Green
-Write-Host "Training Complete!" -ForegroundColor Green
-Write-Host "============================================================" -ForegroundColor Green
+Get-Content $BestConfigFile
 Write-Host ""
-Write-Host "Model trained successfully!" -ForegroundColor Cyan
-if (-not $NoUpload) {
-    Write-Host "Check your HuggingFace profile for the uploaded model!" -ForegroundColor Cyan
+
+# Extract hyperparameters from best config
+# Parse the line: "Configuration: learning_rate=2e-5"
+$ConfigLine = Get-Content $BestConfigFile | Select-String "Configuration:"
+if ($ConfigLine -match 'learning_rate=([0-9e.-]+)') {
+    $BestLearningRate = $matches[1]
+} else {
+    Write-Host "Error: Could not extract learning rate from best config" -ForegroundColor Red
+    exit 1
 }
+
+Write-Host "Extracted hyperparameters:"
+Write-Host "  Learning Rate: $BestLearningRate"
+Write-Host "  max_length: $MAX_LENGTH (fixed)"
+Write-Host "  batch_size: $BATCH_SIZE (fixed)"
+Write-Host "  num_epochs: $NUM_EPOCHS (fixed)"
+Write-Host ""
+
+# Step 3: Final Training with Best Configuration
+Write-Host "============================================================" -ForegroundColor Cyan
+Write-Host "STEP 3/3: Final Training with Best Configuration" -ForegroundColor Cyan
+Write-Host "============================================================" -ForegroundColor Cyan
+Write-Host "Training on $FinalSubset subset with best hyperparameters..."
+Write-Host "This model will be uploaded to HuggingFace Hub."
+Write-Host ""
+
+# Create experiment name for final training
+$FinalExperimentName = "roberta_official_${BestLearningRate}"
+
+# Build final training command
+$FinalArgs = @(
+    "model_phase\main_roberta.py",
+    "--dataset", $Dataset,
+    "--max_length", $MAX_LENGTH,
+    "--batch_size", $BATCH_SIZE,
+    "--learning_rate", $BestLearningRate,
+    "--num_epochs", $NUM_EPOCHS,
+    "--warmup_steps", $WARMUP_STEPS,
+    "--weight_decay", $WEIGHT_DECAY,
+    "--subset", $FinalSubset,
+    "--experiment_name", $FinalExperimentName
+)
+
+if ($UseWandbFlag) {
+    $FinalArgs += "--use_wandb"
+}
+
+# Add checkpoint options
+if ($NoCheckpoints) {
+    $FinalArgs += "--no_checkpoints"
+}
+
+if ($ResumeFromCheckpoint) {
+    $FinalArgs += @("--resume_from_checkpoint", $ResumeFromCheckpoint)
+}
+
+Write-Host "Running: python $($FinalArgs -join ' ')"
+Write-Host ""
+
+& python $FinalArgs
+
+if ($LASTEXITCODE -ne 0) {
+    Write-Host ""
+    Write-Host "Error: Final training failed" -ForegroundColor Red
+    exit 1
+}
+
+# Step 4: Summary
+Write-Host ""
+Write-Host "============================================================" -ForegroundColor Green
+Write-Host "PIPELINE COMPLETE!" -ForegroundColor Green
+Write-Host "============================================================" -ForegroundColor Green
+Write-Host ""
+Write-Host "Summary:"
+Write-Host "1. ✓ Grid search found best hyperparameters"
+Write-Host "2. ✓ Final model trained with optimal configuration"
+Write-Host "3. ✓ Results uploaded to HuggingFace Hub"
+Write-Host ""
+Write-Host "Best Configuration Used:"
+Write-Host "  Learning Rate: $BestLearningRate"
+Write-Host "  max_length: $MAX_LENGTH (fixed)"
+Write-Host "  batch_size: $BATCH_SIZE (fixed)"
+Write-Host "  num_epochs: $NUM_EPOCHS (fixed)"
+Write-Host ""
+Write-Host "Check your HuggingFace profile for the uploaded model!" -ForegroundColor Cyan
 Write-Host ""
