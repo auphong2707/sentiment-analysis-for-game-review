@@ -46,7 +46,7 @@ param(
     [switch]$SkipGridSearch,
     
     [Parameter(Mandatory=$false)]
-    [string]$ResumeFromCheckpoint = $null,
+    [string]$ResumeFromCheckpoint = "auto",
     
     [Parameter(Mandatory=$false)]
     [switch]$NoCheckpoints
@@ -298,7 +298,8 @@ $FinalArgs = @(
     "--warmup_steps", $WARMUP_STEPS,
     "--weight_decay", $WEIGHT_DECAY,
     "--subset", $FinalSubset,
-    "--experiment_name", $FinalExperimentName
+    "--experiment_name", $FinalExperimentName,
+    "--resume_from_checkpoint", "auto"
 )
 
 if ($UseWandbFlag) {
@@ -310,9 +311,8 @@ if ($NoCheckpoints) {
     $FinalArgs += "--no_checkpoints"
 }
 
-if ($ResumeFromCheckpoint) {
-    $FinalArgs += @("--resume_from_checkpoint", $ResumeFromCheckpoint)
-}
+# Note: We always use auto checkpoint finding now, no need to add explicit --resume_from_checkpoint
+# unless user explicitly provided a different path via command line parameter
 
 Write-Host "Running: python $($FinalArgs -join ' ')"
 Write-Host ""

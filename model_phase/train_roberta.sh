@@ -27,7 +27,7 @@ FINAL_SUBSET=1.0
 OUTPUT_BASE_DIR="model_phase/results"
 USE_WANDB=true  # Enable by default
 SKIP_GRIDSEARCH=false
-RESUME_CHECKPOINT=""
+RESUME_CHECKPOINT="auto"  # Auto-find checkpoint by default
 NO_CHECKPOINTS=false
 
 # Parse arguments
@@ -307,7 +307,8 @@ FINAL_CMD="python model_phase/main_roberta.py \
     --warmup_steps $WARMUP_STEPS \
     --weight_decay $WEIGHT_DECAY \
     --subset $FINAL_SUBSET \
-    --experiment_name $FINAL_EXPERIMENT_NAME"
+    --experiment_name $FINAL_EXPERIMENT_NAME \
+    --resume_from_checkpoint auto"
 
 if [ "$USE_WANDB" = true ]; then
     FINAL_CMD="$FINAL_CMD --use_wandb"
@@ -318,9 +319,8 @@ if [ "$NO_CHECKPOINTS" = true ]; then
     FINAL_CMD="$FINAL_CMD --no_checkpoints"
 fi
 
-if [ -n "$RESUME_CHECKPOINT" ]; then
-    FINAL_CMD="$FINAL_CMD --resume_from_checkpoint $RESUME_CHECKPOINT"
-fi
+# Note: We always use auto checkpoint finding now, no need to add --resume_from_checkpoint
+# unless user explicitly provided a different path via command line
 
 echo "Running: $FINAL_CMD"
 echo ""

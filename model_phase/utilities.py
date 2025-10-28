@@ -175,7 +175,7 @@ def print_feature_importance(feature_importance, top_n=10):
 
 def setup_output_directory(output_dir, model_name="baseline"):
     """
-    Setup output directory with timestamp if not provided.
+    Setup output directory without timestamp.
     
     Args:
         output_dir: Path to output directory or None for auto-generation
@@ -185,16 +185,46 @@ def setup_output_directory(output_dir, model_name="baseline"):
         Path object for the output directory
     """
     from pathlib import Path
-    from datetime import datetime
     
     if output_dir is None:
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        output_dir = f"model_phase/results/{model_name}_{timestamp}"
+        output_dir = f"model_phase/results/{model_name}"
     
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     
     return output_dir
+
+
+def find_latest_checkpoint(checkpoint_dir):
+    """
+    Automatically find the latest checkpoint in a directory.
+    
+    Args:
+        checkpoint_dir: Path to the checkpoint directory
+        
+    Returns:
+        Path to the latest checkpoint directory, or None if no checkpoints found
+    """
+    from pathlib import Path
+    
+    checkpoint_dir = Path(checkpoint_dir)
+    
+    if not checkpoint_dir.exists():
+        return None
+    
+    # Find all checkpoint subdirectories (e.g., checkpoint-500, checkpoint-1000)
+    checkpoints = list(checkpoint_dir.glob("checkpoint-*"))
+    
+    if not checkpoints:
+        return None
+    
+    # Sort by modification time (most recent first)
+    checkpoints.sort(key=lambda x: x.stat().st_mtime, reverse=True)
+    
+    latest = checkpoints[0]
+    print(f"✓ Found latest checkpoint: {latest}")
+    
+    return str(latest)
 
 
 def init_wandb_if_available(project_name, experiment_name, config, use_wandb=False):

@@ -74,6 +74,7 @@ import numpy as np
 from model_phase.utilities import (
     load_dataset_from_hf,
     setup_output_directory,
+    find_latest_checkpoint,
     init_wandb_if_available,
     log_to_wandb,
     finish_wandb,
@@ -639,6 +640,17 @@ def main(dataset_name,
     # Setup output directory
     output_dir = setup_output_directory(output_dir, model_name="roberta")
     
+    # Auto-find checkpoint if requested
+    if resume_from_checkpoint == "auto":
+        checkpoint_path = output_dir / 'checkpoints'
+        found_checkpoint = find_latest_checkpoint(checkpoint_path)
+        if found_checkpoint:
+            resume_from_checkpoint = found_checkpoint
+            print(f"ℹ️  Auto-resume enabled: Using checkpoint {resume_from_checkpoint}")
+        else:
+            resume_from_checkpoint = None
+            print(f"ℹ️  No checkpoint found in {checkpoint_path}, starting from scratch")
+    
     # Initialize WandB if requested
     wandb_initialized = False
     if use_wandb and WANDB_AVAILABLE:
@@ -926,7 +938,7 @@ if __name__ == "__main__":
         '--resume_from_checkpoint',
         type=str,
         default=None,
-        help='Path to checkpoint file to resume training from'
+        help='Path to checkpoint directory to resume training from, or "auto" to automatically find the latest checkpoint'
     )
     parser.add_argument(
         '--experiment_name',
