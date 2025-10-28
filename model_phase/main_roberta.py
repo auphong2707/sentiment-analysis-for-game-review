@@ -642,7 +642,7 @@ def main(dataset_name,
     
     # Auto-find checkpoint if requested
     if resume_from_checkpoint == "auto":
-        checkpoint_path = output_dir / 'checkpoints'
+        checkpoint_path = output_dir
         found_checkpoint = find_latest_checkpoint(checkpoint_path)
         if found_checkpoint:
             resume_from_checkpoint = found_checkpoint
