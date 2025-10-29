@@ -8,12 +8,12 @@ set -e  # Exit on error
 # RoBERTa parameters (constants - not tuned)
 readonly MAX_LENGTH=256
 readonly BATCH_SIZE=32
-readonly NUM_EPOCHS=10
+readonly NUM_EPOCHS=5
 readonly WARMUP_STEPS=0
 readonly WEIGHT_DECAY=0.01
 
 # Grid search parameters (tune learning rate for RoBERTa)
-readonly LEARNING_RATE_VALUES=(1e-5 5e-5 1e-4 5e-4)
+readonly LEARNING_RATE_VALUES=(5e-6 1e-5 2e-5 5e-5)
 
 # Load dataset from .env if available
 if [ -f .env ]; then
