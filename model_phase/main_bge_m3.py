@@ -118,12 +118,14 @@ class BGEM3SentimentClassifier:
                  max_length=512,
                  batch_size=32,
                  C=1.0,
+                 gamma='scale',
                  kernel='rbf',
                  random_state=42):
         self.model_name = MODEL_NAME
         self.max_length = max_length
         self.batch_size = batch_size
         self.C = C
+        self.gamma = gamma
         self.kernel = kernel
         self.random_state = random_state
         
@@ -148,6 +150,7 @@ class BGEM3SentimentClassifier:
         # SVM Classifier
         self.classifier = SVC(
             C=C,
+            gamma=gamma,
             kernel=kernel,
             random_state=random_state,
             verbose=True,
@@ -231,6 +234,7 @@ class BGEM3SentimentClassifier:
         # Train SVM classifier on frozen embeddings
         print(f"\n[2/2] Training SVM classifier...")
         print(f"  - C: {self.C}")
+        print(f"  - gamma: {self.gamma}")
         print(f"  - Kernel: {self.kernel}")
         train_start = time.time()
         self.classifier.fit(X_train, y_train)
@@ -285,6 +289,7 @@ class BGEM3SentimentClassifier:
             'max_length': self.max_length,
             'batch_size': self.batch_size,
             'C': self.C,
+            'gamma': self.gamma,
             'kernel': self.kernel,
             'random_state': self.random_state
         }
@@ -306,6 +311,7 @@ class BGEM3SentimentClassifier:
             'max_length': config['max_length'],
             'batch_size': config['batch_size'],
             'C': config['C'],
+            'gamma': config.get('gamma', 'scale'),
             'kernel': config['kernel'],
             'random_state': config['random_state']
         }
@@ -389,6 +395,7 @@ def main(dataset_name,
          max_length=512,
          batch_size=32,
          C=1.0,
+         gamma='scale',
          kernel='rbf',
          subset=1.0,
          output_dir=None,
@@ -421,6 +428,7 @@ def main(dataset_name,
                     "max_length": max_length,
                     "batch_size": batch_size,
                     "C": C,
+                    "gamma": gamma,
                     "kernel": kernel,
                     "subset": subset
                 }
@@ -445,6 +453,7 @@ def main(dataset_name,
         max_length=max_length,
         batch_size=batch_size,
         C=C,
+        gamma=gamma,
         kernel=kernel
     )
     
@@ -496,6 +505,7 @@ def main(dataset_name,
             'max_length': max_length,
             'batch_size': batch_size,
             'C': C,
+            'gamma': gamma,
             'kernel': kernel,
             'subset': subset
         },
@@ -542,6 +552,8 @@ if __name__ == "__main__":
                         help='Batch size for embedding generation')
     parser.add_argument('--C', type=float, default=1.0,
                         help='Regularization parameter for SVM')
+    parser.add_argument('--gamma', type=str, default='scale',
+                        help='Kernel coefficient for RBF (scale, auto, or float)')
     parser.add_argument('--kernel', type=str, default='rbf',
                         choices=['linear', 'poly', 'rbf', 'sigmoid'],
                         help='SVM kernel type')
@@ -569,11 +581,20 @@ if __name__ == "__main__":
     
     upload_to_hf = args.upload_to_hf and not args.no_upload
     
+    # Parse gamma (can be string or float)
+    gamma = args.gamma
+    if gamma not in ['scale', 'auto']:
+        try:
+            gamma = float(gamma)
+        except ValueError:
+            parser.error(f"gamma must be 'scale', 'auto', or a float, got: {gamma}")
+    
     main(
         dataset_name=args.dataset,
         max_length=args.max_length,
         batch_size=args.batch_size,
         C=args.C,
+        gamma=gamma,
         kernel=args.kernel,
         subset=args.subset,
         output_dir=args.output_dir,
