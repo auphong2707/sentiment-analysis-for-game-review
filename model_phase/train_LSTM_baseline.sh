@@ -9,7 +9,7 @@ set -e  # Exit on error
 readonly EMBED_DIM=128
 readonly HIDDEN_DIM=128
 readonly BATCH_SIZE=64
-readonly EPOCHS=10
+readonly EPOCHS=5
 readonly DROPOUT_RATE=0.5
 readonly DENSE_UNITS=128
 
