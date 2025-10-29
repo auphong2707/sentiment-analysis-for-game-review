@@ -7,7 +7,7 @@ set -e  # Exit on error
 
 # BGE-M3 parameters (constants - not tuned)
 readonly MAX_LENGTH=512
-readonly BATCH_SIZE=32
+readonly BATCH_SIZE=64
 readonly KERNEL="rbf"
 
 # Grid search parameters (tune C and gamma for RBF kernel)
