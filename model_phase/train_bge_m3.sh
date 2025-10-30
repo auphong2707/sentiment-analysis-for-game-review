@@ -11,8 +11,8 @@ readonly BATCH_SIZE=64
 readonly KERNEL="rbf"
 
 # Grid search parameters (tune C and gamma for RBF kernel)
-readonly C_VALUES=(0.1 1 3 10)
-readonly GAMMA_VALUES=(0.125 0.25 0.5)
+readonly C_VALUES=(0.1 1 10)
+readonly GAMMA_VALUES=('scale' 0.25 0.5)
 
 # Load dataset from .env if available
 if [ -f .env ]; then
