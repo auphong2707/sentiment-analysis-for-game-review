@@ -152,10 +152,8 @@ class BGEM3SentimentClassifier:
             C=C,
             gamma=gamma,
             kernel=kernel,
-            max_iter=20000,
             random_state=random_state,
-            verbose=True,
-            probability=True  # Enable probability estimates
+            verbose=True
         )
         
         self.label2id = None
@@ -258,13 +256,7 @@ class BGEM3SentimentClassifier:
         y_pred = self.classifier.predict(X_embeddings)
         return [self.id2label[pred] for pred in y_pred]
     
-    def predict_proba(self, texts):
-        """Predict probabilities."""
-        if not self.is_fitted:
-            raise ValueError("Model must be fitted before prediction!")
-        
-        X_embeddings = self._encode_texts(texts, "Prediction")
-        return self.classifier.predict_proba(X_embeddings)
+
     
     def save(self, output_dir):
         """Save model components."""

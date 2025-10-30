@@ -7,8 +7,9 @@ $MAX_LENGTH = 512
 $BATCH_SIZE = 32
 $KERNEL = "rbf"
 
-# Grid search parameters (tune C parameter for SVM)
-$C_VALUES = @(0.1, 1.0, 10.0)
+# Grid search parameters (tune C and gamma for RBF kernel)
+$C_VALUES = @(0.1, 1, 3, 10)
+$GAMMA_VALUES = @(0.125, 0.25, 0.5)
 
 # Load dataset from .env if available
 $envFile = ".env"
@@ -101,100 +102,106 @@ if (-not $SkipGridSearch) {
     $BestOutputDir = ""
     
     # Counter
-    $TotalConfigs = $C_VALUES.Count
+    $TotalConfigs = $C_VALUES.Count * $GAMMA_VALUES.Count
     $Current = 0
     
     Write-Host "Total configurations to test: $TotalConfigs"
-    Write-Host "BGE-M3 Settings (fixed): max_length=$MAX_LENGTH, batch_size=$BATCH_SIZE"
+    Write-Host "BGE-M3 Settings (fixed): max_length=$MAX_LENGTH, batch_size=$BATCH_SIZE, kernel=$KERNEL"
     Write-Host ""
     
-    # Grid search loop
+    # Grid search loop (C x gamma)
     foreach ($CValue in $C_VALUES) {
-        $Current++
-        
-        Write-Host "==========================================" -ForegroundColor Yellow
-        Write-Host "Configuration $Current/$TotalConfigs" -ForegroundColor Yellow
-        Write-Host "==========================================" -ForegroundColor Yellow
-        Write-Host "C (regularization): $CValue"
-        Write-Host ""
-        
-        # Create unique output directory
-        $OutputDir = Join-Path $GridSearchDir "config_${Current}_C${CValue}"
-        
-        # Create experiment name for WandB
-        $ExperimentName = "bge_m3_ex_${Current}"
-        
-        # Build command (no HuggingFace upload during grid search)
-        $TrainArgs = @(
-            "model_phase\main_bge_m3.py",
-            "--dataset", $Dataset,
-            "--max_length", $MAX_LENGTH,
-            "--batch_size", $BATCH_SIZE,
-            "--C", $CValue,
-            "--kernel", $KERNEL,
-            "--subset", $GridSearchSubset,
-            "--output_dir", $OutputDir,
-            "--no_upload",
-            "--skip_test_eval",
-            "--experiment_name", $ExperimentName
-        )
-        
-        # Add wandb if specified
-        if ($UseWandbFlag) {
-            $TrainArgs += "--use_wandb"
-        }
-        
-        # Run training
-        Write-Host "Running: python $($TrainArgs -join ' ')"
-        & python $TrainArgs
-        
-        if ($LASTEXITCODE -ne 0) {
-            Write-Host "Error: Training failed for configuration $Current" -ForegroundColor Red
-            "Configuration $Current`: ERROR - Training failed" | Out-File -FilePath $ResultsFile -Append
-            "" | Out-File -FilePath $ResultsFile -Append
-            continue
-        }
-        
-        # Extract validation F1 score from results.json
-        $ResultsJson = Join-Path $OutputDir "results.json"
-        if (Test-Path $ResultsJson) {
-            $Results = Get-Content $ResultsJson | ConvertFrom-Json
-            $ValF1 = [math]::Round($Results.validation_f1, 4)
-            $ValAcc = [math]::Round($Results.validation_accuracy, 4)
-            $TrainTime = [math]::Round($Results.training_time, 2)
+        foreach ($GammaValue in $GAMMA_VALUES) {
+            $Current++
             
-            Write-Host ""
-            Write-Host "Results:"
-            Write-Host "  Validation F1: $ValF1"
-            Write-Host "  Validation Accuracy: $ValAcc"
-            Write-Host "  Training Time: ${TrainTime}s"
+            Write-Host "==========================================" -ForegroundColor Yellow
+            Write-Host "Configuration $Current/$TotalConfigs" -ForegroundColor Yellow
+            Write-Host "==========================================" -ForegroundColor Yellow
+            Write-Host "C (regularization): $CValue"
+            Write-Host "gamma: $GammaValue"
             Write-Host ""
             
-            # Log to results file
-            "Configuration $Current`:" | Out-File -FilePath $ResultsFile -Append
-            "  C: $CValue" | Out-File -FilePath $ResultsFile -Append
-            "  Validation F1: $ValF1" | Out-File -FilePath $ResultsFile -Append
-            "  Validation Accuracy: $ValAcc" | Out-File -FilePath $ResultsFile -Append
-            "  Training Time: ${TrainTime}s" | Out-File -FilePath $ResultsFile -Append
-            "  Output: $OutputDir" | Out-File -FilePath $ResultsFile -Append
-            "" | Out-File -FilePath $ResultsFile -Append
+            # Create unique output directory
+            $OutputDir = Join-Path $GridSearchDir "config_${Current}_C${CValue}_gamma${GammaValue}"
             
-            # Update best if this is better
-            if ($ValF1 -gt $BestF1) {
-                $BestF1 = $ValF1
-                $BestConfig = "C=$CValue"
-                $BestOutputDir = $OutputDir
-                $BestC = $CValue
-                Write-Host "*** NEW BEST CONFIGURATION! ***" -ForegroundColor Green
-                Write-Host ""
+            # Create experiment name for WandB
+            $ExperimentName = "bge_m3_ex_${Current}"
+            
+            # Build command (no HuggingFace upload during grid search)
+            $TrainArgs = @(
+                "model_phase\main_bge_m3.py",
+                "--dataset", $Dataset,
+                "--max_length", $MAX_LENGTH,
+                "--batch_size", $BATCH_SIZE,
+                "--C", $CValue,
+                "--gamma", $GammaValue,
+                "--kernel", $KERNEL,
+                "--subset", $GridSearchSubset,
+                "--output_dir", $OutputDir,
+                "--no_upload",
+                "--skip_test_eval",
+                "--experiment_name", $ExperimentName
+            )
+        
+            # Add wandb if specified
+            if ($UseWandbFlag) {
+                $TrainArgs += "--use_wandb"
             }
-        } else {
-            Write-Host "Error: Results file not found at $ResultsJson" -ForegroundColor Red
-            "Configuration $Current`: ERROR - Results file not found" | Out-File -FilePath $ResultsFile -Append
-            "" | Out-File -FilePath $ResultsFile -Append
+            
+            # Run training
+            Write-Host "Running: python $($TrainArgs -join ' ')"
+            & python $TrainArgs
+            
+            if ($LASTEXITCODE -ne 0) {
+                Write-Host "Error: Training failed for configuration $Current" -ForegroundColor Red
+                "Configuration $Current`: ERROR - Training failed" | Out-File -FilePath $ResultsFile -Append
+                "" | Out-File -FilePath $ResultsFile -Append
+                continue
+            }
+            
+            # Extract validation F1 score from results.json
+            $ResultsJson = Join-Path $OutputDir "results.json"
+            if (Test-Path $ResultsJson) {
+                $Results = Get-Content $ResultsJson | ConvertFrom-Json
+                $ValF1 = [math]::Round($Results.validation_f1, 4)
+                $ValAcc = [math]::Round($Results.validation_accuracy, 4)
+                $TrainTime = [math]::Round($Results.training_time, 2)
+                
+                Write-Host ""
+                Write-Host "Results:"
+                Write-Host "  Validation F1: $ValF1"
+                Write-Host "  Validation Accuracy: $ValAcc"
+                Write-Host "  Training Time: ${TrainTime}s"
+                Write-Host ""
+                
+                # Log to results file
+                "Configuration $Current`:" | Out-File -FilePath $ResultsFile -Append
+                "  C: $CValue" | Out-File -FilePath $ResultsFile -Append
+                "  gamma: $GammaValue" | Out-File -FilePath $ResultsFile -Append
+                "  Validation F1: $ValF1" | Out-File -FilePath $ResultsFile -Append
+                "  Validation Accuracy: $ValAcc" | Out-File -FilePath $ResultsFile -Append
+                "  Training Time: ${TrainTime}s" | Out-File -FilePath $ResultsFile -Append
+                "  Output: $OutputDir" | Out-File -FilePath $ResultsFile -Append
+                "" | Out-File -FilePath $ResultsFile -Append
+                
+                # Update best if this is better
+                if ($ValF1 -gt $BestF1) {
+                    $BestF1 = $ValF1
+                    $BestConfig = "C=$CValue, gamma=$GammaValue"
+                    $BestOutputDir = $OutputDir
+                    $BestC = $CValue
+                    $BestGamma = $GammaValue
+                    Write-Host "*** NEW BEST CONFIGURATION! ***" -ForegroundColor Green
+                    Write-Host ""
+                }
+            } else {
+                Write-Host "Error: Results file not found at $ResultsJson" -ForegroundColor Red
+                "Configuration $Current`: ERROR - Results file not found" | Out-File -FilePath $ResultsFile -Append
+                "" | Out-File -FilePath $ResultsFile -Append
+            }
+            
+            Write-Host ""
         }
-        
-        Write-Host ""
     }
     
     # Save best config summary
@@ -246,9 +253,17 @@ if ($ConfigLine -match 'C=([0-9.]+)') {
     Write-Host "Error: Could not extract C from best config" -ForegroundColor Red
     exit 1
 }
+if ($ConfigLine -match 'gamma=([a-z0-9.]+)') {
+    $BestGamma = $matches[1]
+} else {
+    Write-Host "Error: Could not extract gamma from best config" -ForegroundColor Red
+    exit 1
+}
 
 Write-Host "Extracted hyperparameters:"
 Write-Host "  C: $BestC"
+Write-Host "  gamma: $BestGamma"
+Write-Host "  kernel: $KERNEL (fixed)"
 Write-Host "  max_length: $MAX_LENGTH (fixed)"
 Write-Host "  batch_size: $BATCH_SIZE (fixed)"
 Write-Host ""
@@ -271,6 +286,7 @@ $FinalArgs = @(
     "--max_length", $MAX_LENGTH,
     "--batch_size", $BATCH_SIZE,
     "--C", $BestC,
+    "--gamma", $BestGamma,
     "--kernel", $KERNEL,
     "--subset", $FinalSubset,
     "--experiment_name", $FinalExperimentName
@@ -304,6 +320,8 @@ Write-Host "3. ✓ Results uploaded to HuggingFace Hub"
 Write-Host ""
 Write-Host "Best Configuration Used:"
 Write-Host "  C: $BestC"
+Write-Host "  gamma: $BestGamma"
+Write-Host "  kernel: $KERNEL (fixed)"
 Write-Host "  max_length: $MAX_LENGTH (fixed)"
 Write-Host "  batch_size: $BATCH_SIZE (fixed)"
 Write-Host ""

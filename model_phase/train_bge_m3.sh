@@ -312,40 +312,4 @@ echo "  max_length: $MAX_LENGTH (fixed)"
 echo "  batch_size: $BATCH_SIZE (fixed)"
 echo ""
 echo "Check your HuggingFace profile for the uploaded model!"
-echo ""ommand
-FINAL_CMD="python model_phase/main_bge_m3.py \
-    --dataset $DATASET \
-    --max_length $MAX_LENGTH \
-    --batch_size $BATCH_SIZE \
-    --C $BEST_C \
-    --kernel $KERNEL \
-    --subset $FINAL_SUBSET \
-    --experiment_name $FINAL_EXPERIMENT_NAME"
-
-if [ "$USE_WANDB" = true ]; then
-    FINAL_CMD="$FINAL_CMD --use_wandb"
-fi
-
-echo "Running: $FINAL_CMD"
-echo ""
-
-eval $FINAL_CMD
-
-# Step 4: Summary
-echo ""
-echo "============================================================"
-echo "PIPELINE COMPLETE!"
-echo "============================================================"
-echo ""
-echo "Summary:"
-echo "1. ✓ Grid search found best hyperparameters"
-echo "2. ✓ Final model trained with optimal configuration"
-echo "3. ✓ Results uploaded to HuggingFace Hub"
-echo ""
-echo "Best Configuration Used:"
-echo "  C: $BEST_C"
-echo "  max_length: $MAX_LENGTH (fixed)"
-echo "  batch_size: $BATCH_SIZE (fixed)"
-echo ""
-echo "Check your HuggingFace profile for the uploaded model!"
 echo ""
