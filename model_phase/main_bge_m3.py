@@ -384,6 +384,165 @@ def evaluate_classifier(model, texts, labels, split_name="Test", use_wandb=False
     return results
 
 
+def run_grid_search(dataset_name,
+                    max_length=512,
+                    batch_size=32,
+                    kernel='rbf',
+                    C_values=[0.1, 1, 3, 10],
+                    gamma_values=[0.125, 0.25, 0.5],
+                    subset=0.1,
+                    output_dir='model_phase/results/gridsearch'):
+    """
+    Run grid search with pre-computed embeddings.
+    """
+    print("\n" + "="*60)
+    print("BGE-M3 Efficient Grid Search")
+    print("="*60)
+    
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Load data
+    train_data, val_data, _ = load_dataset_from_hf(dataset_name, subset_percentage=subset)
+    
+    # Initialize BGE-M3 model (for embedding only)
+    print(f"\n{'='*60}")
+    print("Step 1: Loading BGE-M3 and generating embeddings (ONE TIME)")
+    print(f"{'='*60}")
+    
+    model = BGEM3SentimentClassifier(
+        max_length=max_length,
+        batch_size=batch_size,
+        kernel=kernel
+    )
+    
+    # Create datasets for label mapping
+    train_dataset = GameReviewDataset(train_data['text'], train_data['label'])
+    val_dataset = GameReviewDataset(val_data['text'], val_data['label'], 
+                                    label2id=train_dataset.label2id)
+    
+    # Generate embeddings ONCE
+    print("\nGenerating training embeddings...")
+    embed_start = time.time()
+    X_train = model._encode_texts(train_data['text'], "Training")
+    y_train = np.array([train_dataset.label2id[label] for label in train_data['label']])
+    
+    print("\nGenerating validation embeddings...")
+    X_val = model._encode_texts(val_data['text'], "Validation")
+    y_val = np.array([val_dataset.label2id[label] for label in val_data['label']])
+    
+    embed_time = time.time() - embed_start
+    print(f"\n✓ Embeddings generated in {embed_time:.2f}s")
+    print(f"  Train shape: {X_train.shape}")
+    print(f"  Val shape: {X_val.shape}")
+    
+    # Grid search
+    print(f"\n{'='*60}")
+    print("Step 2: Grid Search on SVM hyperparameters")
+    print(f"{'='*60}")
+    
+    total_configs = len(C_values) * len(gamma_values)
+    print(f"\nTotal configurations: {total_configs}")
+    print(f"C values: {C_values}")
+    print(f"Gamma values: {gamma_values}")
+    print("")
+    
+    results = []
+    best_f1 = 0
+    best_config = None
+    
+    current = 0
+    for C in C_values:
+        for gamma in gamma_values:
+            current += 1
+            
+            print(f"{'='*50}")
+            print(f"Configuration {current}/{total_configs}")
+            print(f"{'='*50}")
+            print(f"C: {C}, gamma: {gamma}")
+            
+            # Train SVM
+            train_start = time.time()
+            svm = SVC(C=C, gamma=gamma, kernel=kernel, random_state=42, verbose=False)
+            svm.fit(X_train, y_train)
+            train_time = time.time() - train_start
+            
+            # Evaluate
+            y_pred = svm.predict(X_val)
+            accuracy = accuracy_score(y_val, y_pred)
+            precision, recall, f1, _ = precision_recall_fscore_support(
+                y_val, y_pred, average='weighted', zero_division=0
+            )
+            
+            print(f"  Training time: {train_time:.2f}s")
+            print(f"  Val Accuracy: {accuracy:.4f}")
+            print(f"  Val F1: {f1:.4f}")
+            print(f"  Val Precision: {precision:.4f}")
+            print(f"  Val Recall: {recall:.4f}")
+            
+            # Store results
+            config_result = {
+                'config_id': current,
+                'C': C,
+                'gamma': gamma,
+                'kernel': kernel,
+                'train_time': train_time,
+                'val_accuracy': float(accuracy),
+                'val_f1': float(f1),
+                'val_precision': float(precision),
+                'val_recall': float(recall)
+            }
+            results.append(config_result)
+            
+            # Track best
+            if f1 > best_f1:
+                best_f1 = f1
+                best_config = config_result
+                print(f"  *** NEW BEST! ***")
+            
+            print("")
+    
+    # Save results
+    print(f"{'='*60}")
+    print("Grid Search Complete!")
+    print(f"{'='*60}")
+    
+    # Save all results
+    results_file = output_dir / 'gridsearch_results.json'
+    with open(results_file, 'w') as f:
+        json.dump({
+            'embedding_time': embed_time,
+            'total_configs': total_configs,
+            'results': results,
+            'best_config': best_config
+        }, f, indent=2)
+    
+    # Save best config
+    best_config_file = output_dir / 'best_config.txt'
+    with open(best_config_file, 'w') as f:
+        f.write("Best Configuration Found\n")
+        f.write("======================\n")
+        f.write(f"Configuration: C={best_config['C']}, gamma={best_config['gamma']}\n")
+        f.write(f"Validation F1: {best_config['val_f1']:.4f}\n")
+        f.write(f"Validation Accuracy: {best_config['val_accuracy']:.4f}\n")
+    
+    print(f"\n✓ Results saved to: {results_file}")
+    print(f"✓ Best config saved to: {best_config_file}")
+    
+    print(f"\nBest Configuration:")
+    print(f"  C: {best_config['C']}")
+    print(f"  gamma: {best_config['gamma']}")
+    print(f"  Val F1: {best_config['val_f1']:.4f}")
+    print(f"  Val Accuracy: {best_config['val_accuracy']:.4f}")
+    
+    print(f"\nTotal time:")
+    print(f"  Embedding: {embed_time:.2f}s")
+    print(f"  Grid search: {sum(r['train_time'] for r in results):.2f}s")
+    print(f"  Total: {embed_time + sum(r['train_time'] for r in results):.2f}s")
+    
+    return best_config
+
+
 def main(dataset_name,
          max_length=512,
          batch_size=32,
@@ -396,8 +555,29 @@ def main(dataset_name,
          upload_to_hf=True,
          hf_repo=None,
          skip_test_eval=False,
-         experiment_name=None):
+         experiment_name=None,
+         grid_search=False,
+         C_values=None,
+         gamma_values=None):
     """Main training pipeline."""
+    
+    # Grid search mode
+    if grid_search:
+        if C_values is None:
+            C_values = [0.1, 1, 3, 10]
+        if gamma_values is None:
+            gamma_values = [0.125, 0.25, 0.5]
+        
+        return run_grid_search(
+            dataset_name=dataset_name,
+            max_length=max_length,
+            batch_size=batch_size,
+            kernel=kernel,
+            C_values=C_values,
+            gamma_values=gamma_values,
+            subset=subset,
+            output_dir=output_dir or 'model_phase/results/gridsearch'
+        )
     print("\n" + "="*60)
     print("BGE-M3 Embeddings for Sentiment Analysis")
     print("="*60)
@@ -566,6 +746,12 @@ if __name__ == "__main__":
                         help='Skip test evaluation')
     parser.add_argument('--experiment_name', type=str, default=None,
                         help='Custom experiment name for WandB')
+    parser.add_argument('--grid_search', action='store_true',
+                        help='Run grid search mode')
+    parser.add_argument('--C_values', type=float, nargs='+', default=None,
+                        help='C values for grid search')
+    parser.add_argument('--gamma_values', nargs='+', default=None,
+                        help='Gamma values for grid search')
     
     args = parser.parse_args()
     
@@ -582,6 +768,19 @@ if __name__ == "__main__":
         except ValueError:
             parser.error(f"gamma must be 'scale', 'auto', or a float, got: {gamma}")
     
+    # Parse gamma_values for grid search
+    gamma_values_parsed = None
+    if args.gamma_values:
+        gamma_values_parsed = []
+        for gv in args.gamma_values:
+            if gv in ['scale', 'auto']:
+                gamma_values_parsed.append(gv)
+            else:
+                try:
+                    gamma_values_parsed.append(float(gv))
+                except ValueError:
+                    parser.error(f"gamma_values must be 'scale', 'auto', or floats, got: {gv}")
+    
     main(
         dataset_name=args.dataset,
         max_length=args.max_length,
@@ -595,5 +794,8 @@ if __name__ == "__main__":
         upload_to_hf=upload_to_hf,
         hf_repo=args.hf_repo,
         skip_test_eval=args.skip_test_eval,
-        experiment_name=args.experiment_name
+        experiment_name=args.experiment_name,
+        grid_search=args.grid_search,
+        C_values=args.C_values,
+        gamma_values=gamma_values_parsed
     )

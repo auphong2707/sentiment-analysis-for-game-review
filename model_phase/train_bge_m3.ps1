@@ -79,141 +79,39 @@ Write-Host ""
 # Step 1: Grid Search (if not skipped)
 if (-not $SkipGridSearch) {
     Write-Host "============================================================" -ForegroundColor Cyan
-    Write-Host "STEP 1/3: Running Grid Search" -ForegroundColor Cyan
+    Write-Host "STEP 1/3: Running Efficient Grid Search" -ForegroundColor Cyan
     Write-Host "============================================================" -ForegroundColor Cyan
     Write-Host "Finding best hyperparameters on $GridSearchSubset subset..."
+    Write-Host "(Embeddings will be loaded ONCE, then SVM trained multiple times)"
     Write-Host ""
     
     $GridSearchDir = Join-Path $OutputBaseDir "gridsearch"
     
-    # Results file
-    $ResultsFile = Join-Path $GridSearchDir "gridsearch_results.txt"
-    New-Item -ItemType Directory -Path $GridSearchDir -Force | Out-Null
+    # Build grid search command
+    $GridSearchArgs = @(
+        "model_phase\main_bge_m3.py",
+        "--grid_search",
+        "--dataset", $Dataset,
+        "--max_length", $MAX_LENGTH,
+        "--batch_size", $BATCH_SIZE,
+        "--kernel", $KERNEL,
+        "--subset", $GridSearchSubset,
+        "--output_dir", $GridSearchDir,
+        "--C_values"
+    )
+    $GridSearchArgs += $C_VALUES
+    $GridSearchArgs += "--gamma_values"
+    $GridSearchArgs += $GAMMA_VALUES
     
-    "Grid Search Results - $(Get-Date)" | Out-File -FilePath $ResultsFile
-    "Dataset: $Dataset" | Out-File -FilePath $ResultsFile -Append
-    "Subset: $GridSearchSubset" | Out-File -FilePath $ResultsFile -Append
-    "==========================================" | Out-File -FilePath $ResultsFile -Append
-    "" | Out-File -FilePath $ResultsFile -Append
-    
-    # Best results tracking
-    $BestF1 = 0
-    $BestConfig = ""
-    $BestOutputDir = ""
-    
-    # Counter
-    $TotalConfigs = $C_VALUES.Count * $GAMMA_VALUES.Count
-    $Current = 0
-    
-    Write-Host "Total configurations to test: $TotalConfigs"
-    Write-Host "BGE-M3 Settings (fixed): max_length=$MAX_LENGTH, batch_size=$BATCH_SIZE, kernel=$KERNEL"
+    Write-Host "Running: python $($GridSearchArgs -join ' ')"
     Write-Host ""
     
-    # Grid search loop (C x gamma)
-    foreach ($CValue in $C_VALUES) {
-        foreach ($GammaValue in $GAMMA_VALUES) {
-            $Current++
-            
-            Write-Host "==========================================" -ForegroundColor Yellow
-            Write-Host "Configuration $Current/$TotalConfigs" -ForegroundColor Yellow
-            Write-Host "==========================================" -ForegroundColor Yellow
-            Write-Host "C (regularization): $CValue"
-            Write-Host "gamma: $GammaValue"
-            Write-Host ""
-            
-            # Create unique output directory
-            $OutputDir = Join-Path $GridSearchDir "config_${Current}_C${CValue}_gamma${GammaValue}"
-            
-            # Create experiment name for WandB
-            $ExperimentName = "bge_m3_ex_${Current}"
-            
-            # Build command (no HuggingFace upload during grid search)
-            $TrainArgs = @(
-                "model_phase\main_bge_m3.py",
-                "--dataset", $Dataset,
-                "--max_length", $MAX_LENGTH,
-                "--batch_size", $BATCH_SIZE,
-                "--C", $CValue,
-                "--gamma", $GammaValue,
-                "--kernel", $KERNEL,
-                "--subset", $GridSearchSubset,
-                "--output_dir", $OutputDir,
-                "--no_upload",
-                "--skip_test_eval",
-                "--experiment_name", $ExperimentName
-            )
-        
-            # Add wandb if specified
-            if ($UseWandbFlag) {
-                $TrainArgs += "--use_wandb"
-            }
-            
-            # Run training
-            Write-Host "Running: python $($TrainArgs -join ' ')"
-            & python $TrainArgs
-            
-            if ($LASTEXITCODE -ne 0) {
-                Write-Host "Error: Training failed for configuration $Current" -ForegroundColor Red
-                "Configuration $Current`: ERROR - Training failed" | Out-File -FilePath $ResultsFile -Append
-                "" | Out-File -FilePath $ResultsFile -Append
-                continue
-            }
-            
-            # Extract validation F1 score from results.json
-            $ResultsJson = Join-Path $OutputDir "results.json"
-            if (Test-Path $ResultsJson) {
-                $Results = Get-Content $ResultsJson | ConvertFrom-Json
-                $ValF1 = [math]::Round($Results.validation_f1, 4)
-                $ValAcc = [math]::Round($Results.validation_accuracy, 4)
-                $TrainTime = [math]::Round($Results.training_time, 2)
-                
-                Write-Host ""
-                Write-Host "Results:"
-                Write-Host "  Validation F1: $ValF1"
-                Write-Host "  Validation Accuracy: $ValAcc"
-                Write-Host "  Training Time: ${TrainTime}s"
-                Write-Host ""
-                
-                # Log to results file
-                "Configuration $Current`:" | Out-File -FilePath $ResultsFile -Append
-                "  C: $CValue" | Out-File -FilePath $ResultsFile -Append
-                "  gamma: $GammaValue" | Out-File -FilePath $ResultsFile -Append
-                "  Validation F1: $ValF1" | Out-File -FilePath $ResultsFile -Append
-                "  Validation Accuracy: $ValAcc" | Out-File -FilePath $ResultsFile -Append
-                "  Training Time: ${TrainTime}s" | Out-File -FilePath $ResultsFile -Append
-                "  Output: $OutputDir" | Out-File -FilePath $ResultsFile -Append
-                "" | Out-File -FilePath $ResultsFile -Append
-                
-                # Update best if this is better
-                if ($ValF1 -gt $BestF1) {
-                    $BestF1 = $ValF1
-                    $BestConfig = "C=$CValue, gamma=$GammaValue"
-                    $BestOutputDir = $OutputDir
-                    $BestC = $CValue
-                    $BestGamma = $GammaValue
-                    Write-Host "*** NEW BEST CONFIGURATION! ***" -ForegroundColor Green
-                    Write-Host ""
-                }
-            } else {
-                Write-Host "Error: Results file not found at $ResultsJson" -ForegroundColor Red
-                "Configuration $Current`: ERROR - Results file not found" | Out-File -FilePath $ResultsFile -Append
-                "" | Out-File -FilePath $ResultsFile -Append
-            }
-            
-            Write-Host ""
-        }
+    & python $GridSearchArgs
+    
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "Error: Grid search failed" -ForegroundColor Red
+        exit 1
     }
-    
-    # Save best config summary
-    $BestConfigFile = Join-Path $GridSearchDir "best_config.txt"
-    "Best Configuration Found" | Out-File -FilePath $BestConfigFile
-    "======================" | Out-File -FilePath $BestConfigFile -Append
-    "Configuration: $BestConfig" | Out-File -FilePath $BestConfigFile -Append
-    "Validation F1: $BestF1" | Out-File -FilePath $BestConfigFile -Append
-    "Model Directory: $BestOutputDir" | Out-File -FilePath $BestConfigFile -Append
-    
-    Write-Host "All results saved to: $ResultsFile"
-    Write-Host "Best configuration saved to: $BestConfigFile"
     
     Write-Host ""
     Write-Host "✓ Grid search complete!" -ForegroundColor Green
@@ -247,13 +145,13 @@ Write-Host ""
 
 # Extract hyperparameters from best config
 $ConfigLine = Get-Content $BestConfigFile | Select-String "Configuration:"
-if ($ConfigLine -match 'C=([0-9.]+)') {
+if ($ConfigLine -match 'C=([0-9.e+-]+)') {
     $BestC = $matches[1]
 } else {
     Write-Host "Error: Could not extract C from best config" -ForegroundColor Red
     exit 1
 }
-if ($ConfigLine -match 'gamma=([a-z0-9.]+)') {
+if ($ConfigLine -match 'gamma=([a-z0-9.e+-]+)') {
     $BestGamma = $matches[1]
 } else {
     Write-Host "Error: Could not extract gamma from best config" -ForegroundColor Red
