@@ -152,6 +152,7 @@ class BGEM3SentimentClassifier:
             C=C,
             gamma=gamma,
             kernel=kernel,
+            max_iter=20000,
             random_state=random_state,
             verbose=True,
             probability=True  # Enable probability estimates
