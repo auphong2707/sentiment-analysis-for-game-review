@@ -441,20 +441,24 @@ def run_grid_search(dataset_name,
     print("Step 2: Grid Search on SVM hyperparameters")
     print(f"{'='*60}")
     
-    total_configs = len(C_values) * len(gamma_values)
-    print(f"\nTotal configurations: {total_configs}")
-    print(f"C values: {C_values}")
-    print(f"Gamma values: {gamma_values}")
+    # Check if paired mode (same length arrays)
+    if len(C_values) == len(gamma_values):
+        config_pairs = list(zip(C_values, gamma_values))
+        print(f"\nPAIRED mode: Testing specific (C, gamma) pairs")
+    else:
+        config_pairs = [(C, gamma) for C in C_values for gamma in gamma_values]
+        print(f"\nCARTESIAN mode: Testing all combinations")
+    
+    total_configs = len(config_pairs)
+    print(f"Total configurations: {total_configs}")
+    print(f"Pairs: {config_pairs}")
     print("")
     
     results = []
     best_f1 = 0
     best_config = None
     
-    current = 0
-    for C in C_values:
-        for gamma in gamma_values:
-            current += 1
+    for current, (C, gamma) in enumerate(config_pairs, 1):
             
             print(f"{'='*50}")
             print(f"Configuration {current}/{total_configs}")
