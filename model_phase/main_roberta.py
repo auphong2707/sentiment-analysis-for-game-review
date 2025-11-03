@@ -819,10 +819,11 @@ def main(dataset_name,
         }
     else:
         # Evaluate on test set (official training mode)
-        # WandB is still running, so test metrics will be logged
+        # Use direct inference to avoid WandB callback issues
+        # We'll manually log test results to WandB after evaluation
         test_results = evaluate_classifier(
             model, test_data['text'], test_data['label'], "Test",
-            use_trainer_predict=True  # Use normal prediction - WandB will log test metrics
+            use_trainer_predict=False  # Use direct inference to avoid callback issues
         )
         
         # Log test results to WandB in official mode
