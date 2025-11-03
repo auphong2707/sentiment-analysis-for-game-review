@@ -743,7 +743,7 @@ def main(dataset_name,
         use_trainer_predict=use_trainer_predict
     )
     
-    # Log validation results and training time to WandB (before finishing the run)
+    # Log validation results and training time to WandB
     if wandb_initialized and WANDB_AVAILABLE:
         wandb_metrics = {
             'final_val_accuracy': val_results['validation_accuracy'],
@@ -761,24 +761,43 @@ def main(dataset_name,
         wandb.summary['final_val_f1'] = val_results['validation_f1']
         wandb.summary['final_val_accuracy'] = val_results['validation_accuracy']
     
-    # Finish WandB run NOW (before any test evaluation) to prevent test metrics from being logged
-    if wandb_initialized and WANDB_AVAILABLE:
+    # In grid search mode, finish WandB early to avoid logging test metrics
+    # In official mode, keep WandB running to log test results
+    if skip_test_eval and wandb_initialized and WANDB_AVAILABLE:
         try:
             wandb.finish()
-            print("✓ WandB run finished")
+            print("✓ WandB run finished (grid search mode - test eval skipped)")
             wandb_initialized = False  # Mark as finished to prevent double-finish
             
             # Remove ALL WandB callbacks from trainer to prevent errors during subsequent predictions
             if model.trainer is not None and hasattr(model.trainer, 'callback_handler'):
                 original_count = len(model.trainer.callback_handler.callbacks)
+                
+                # Filter out WandB callbacks by checking class name and module
+                def is_wandb_callback(cb):
+                    # Check if it's our custom WandbCallback
+                    if isinstance(cb, WandbCallback):
+                        return True
+                    # Check class name contains 'Wandb' or 'wandb'
+                    class_name = cb.__class__.__name__
+                    if 'Wandb' in class_name or 'wandb' in class_name:
+                        return True
+                    # Check module name contains 'wandb'
+                    module_name = cb.__class__.__module__
+                    if 'wandb' in module_name.lower():
+                        return True
+                    return False
+                
                 model.trainer.callback_handler.callbacks = [
                     cb for cb in model.trainer.callback_handler.callbacks 
-                    if not isinstance(cb, WandbCallback) and 
-                    not (hasattr(cb, '__class__') and 'Wandb' in cb.__class__.__name__)
+                    if not is_wandb_callback(cb)
                 ]
                 removed_count = original_count - len(model.trainer.callback_handler.callbacks)
                 if removed_count > 0:
                     print(f"  ✓ Removed {removed_count} WandB callback(s) from trainer")
+                
+                # Also ensure report_to is set to none to prevent auto-registration
+                model.trainer.args.report_to = []
         except Exception as e:
             print(f"⚠️  Error finishing WandB run: {e}")
     
@@ -799,12 +818,34 @@ def main(dataset_name,
             'test_confusion_matrix': []
         }
     else:
-        # Evaluate on test set (final training mode only)
-        # WandB is already finished, but we still want test evaluation to run normally
+        # Evaluate on test set (official training mode)
+        # WandB is still running, so test metrics will be logged
         test_results = evaluate_classifier(
             model, test_data['text'], test_data['label'], "Test",
-            use_trainer_predict=True  # Use normal prediction in final training
+            use_trainer_predict=True  # Use normal prediction - WandB will log test metrics
         )
+        
+        # Log test results to WandB in official mode
+        if wandb_initialized and WANDB_AVAILABLE:
+            wandb_test_metrics = {
+                'final_test_accuracy': test_results['test_accuracy'],
+                'final_test_f1': test_results['test_f1'],
+                'final_test_precision': test_results['test_precision'],
+                'final_test_recall': test_results['test_recall'],
+            }
+            log_to_wandb(wandb_test_metrics, use_wandb=True)
+            
+            # Update summary with test metrics
+            wandb.summary['final_test_f1'] = test_results['test_f1']
+            wandb.summary['final_test_accuracy'] = test_results['test_accuracy']
+    
+    # Finish WandB run after all evaluation is complete (official mode only)
+    if wandb_initialized and WANDB_AVAILABLE:
+        try:
+            wandb.finish()
+            print("✓ WandB run finished (official mode - all metrics logged)")
+        except Exception as e:
+            print(f"⚠️  Error finishing WandB run: {e}")
     
     # Compile all results
     all_results = {
@@ -832,8 +873,6 @@ def main(dataset_name,
     # Save results and model
     save_results_to_json(all_results, output_dir / 'results.json')
     model.save(output_dir)
-    
-    # WandB run already finished earlier (no need to finish again)
     
     # Print summary
     print_training_summary(all_results, output_dir)
