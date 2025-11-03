@@ -768,13 +768,17 @@ def main(dataset_name,
             print("✓ WandB run finished")
             wandb_initialized = False  # Mark as finished to prevent double-finish
             
-            # Remove WandB callbacks from trainer to prevent errors during subsequent predictions
+            # Remove ALL WandB callbacks from trainer to prevent errors during subsequent predictions
             if model.trainer is not None and hasattr(model.trainer, 'callback_handler'):
+                original_count = len(model.trainer.callback_handler.callbacks)
                 model.trainer.callback_handler.callbacks = [
                     cb for cb in model.trainer.callback_handler.callbacks 
                     if not isinstance(cb, WandbCallback) and 
-                    not (hasattr(cb, '__class__') and 'WandbCallback' in cb.__class__.__name__)
+                    not (hasattr(cb, '__class__') and 'Wandb' in cb.__class__.__name__)
                 ]
+                removed_count = original_count - len(model.trainer.callback_handler.callbacks)
+                if removed_count > 0:
+                    print(f"  ✓ Removed {removed_count} WandB callback(s) from trainer")
         except Exception as e:
             print(f"⚠️  Error finishing WandB run: {e}")
     
