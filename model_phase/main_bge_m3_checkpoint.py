@@ -148,22 +148,7 @@ class CheckpointManager:
             return model
         return None
     
-    def save_dataset(self, data, stage_name):
-        """Save dataset to checkpoint."""
-        filepath = self.checkpoint_dir / f'{stage_name}_data.pkl'
-        with open(filepath, 'wb') as f:
-            pickle.dump(data, f)
-        print(f"  ✓ Saved dataset to {filepath}")
-    
-    def load_dataset(self, stage_name):
-        """Load dataset from checkpoint."""
-        filepath = self.checkpoint_dir / f'{stage_name}_data.pkl'
-        if filepath.exists():
-            with open(filepath, 'rb') as f:
-                data = pickle.load(f)
-            print(f"  ✓ Loaded dataset from {filepath}")
-            return data
-        return None
+    # Dataset checkpoint removed - always reload from HuggingFace (fast and avoids issues)
     
     def save_results(self, results, stage_name):
         """Save evaluation results."""
@@ -410,13 +395,6 @@ class BGEM3SentimentClassifier:
             print(f"  Kernel: {self.kernel}")
             print(f"  Training samples: {X_train.shape[0]:,}")
             print(f"  Features: {X_train.shape[1]:,}")
-            
-            # ⚠️ NOTE: SVM training không hỗ trợ resume nếu bị timeout
-            # Nếu bị timeout ở đây, phải train lại từ đầu
-            # Để giảm risk:
-            # - Giảm C (ví dụ: 1.0 thay vì 3.0) để train nhanh hơn
-            # - Hoặc dùng kernel='linear' thay vì 'rbf' (nhanh hơn nhiều)
-            
             print(f"\n  🚀 Starting SVM training (this may take 30-60 minutes)...")
             print(f"  ⏱️  Estimated time: ~{X_train.shape[0]/1000:.0f}-{X_train.shape[0]/500:.0f} minutes")
             print(f"  ⚠️  If timeout here, reduce C or use kernel='linear' for faster training")
@@ -707,23 +685,17 @@ def main(dataset_name,
         except Exception as e:
             print(f"⚠️  Could not initialize WandB: {e}")
     
-    # Load data (with checkpoint)
-    if checkpoint_manager.is_stage_completed('data_loaded'):
-        print(f"\n✓ Data already loaded, retrieving from checkpoint...")
-        train_data = checkpoint_manager.load_dataset('train')
-        val_data = checkpoint_manager.load_dataset('val')
-        test_data = checkpoint_manager.load_dataset('test')
-    else:
-        print(f"\n[data_loaded] Loading dataset...")
-        train_data, val_data, test_data = load_dataset_from_hf(
-            dataset_name,
-            subset_percentage=subset
-        )
-        
-        # Save checkpoint
-        checkpoint_manager.save_dataset(train_data, 'train')
-        checkpoint_manager.save_dataset(val_data, 'val')
-        checkpoint_manager.save_dataset(test_data, 'test')
+    # Load data (ALWAYS reload from HuggingFace - fast and avoids Arrow file issues)
+    print(f"\n[data_loaded] Loading dataset from HuggingFace...")
+    print(f"  ℹ️  Note: Always reload dataset (fast ~2min, avoids checkpoint issues)")
+    
+    train_data, val_data, test_data = load_dataset_from_hf(
+        dataset_name,
+        subset_percentage=subset
+    )
+    
+    # Mark as completed for progress tracking (but don't save dataset checkpoint)
+    if not checkpoint_manager.is_stage_completed('data_loaded'):
         checkpoint_manager.mark_stage_completed(
             'data_loaded',
             {
