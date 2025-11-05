@@ -404,6 +404,7 @@ class BGEM3SentimentClassifier:
                 C=self.C,
                 gamma=self.gamma,
                 kernel=self.kernel,
+                max_iter=50000,
                 random_state=self.random_state,
                 verbose=True  # Will print progress during training
             )
