@@ -397,38 +397,64 @@ class BGEM3SentimentClassifier:
             print(f"  Features: {X_train.shape[1]:,}")
             print(f"\n  🚀 Starting SVM training (this may take 30-60 minutes)...")
             print(f"  ⏱️  Estimated time: ~{X_train.shape[0]/1000:.0f}-{X_train.shape[0]/500:.0f} minutes")
-            print(f"  ⚠️  If timeout here, reduce C or use kernel='linear' for faster training")
+            print(f"\n[SVM Training] Starting training with {X_train.shape[0]:,} samples...")
             
             train_start = time.time()
+            
+            # Create SVM with verbose output
             self.classifier = SVC(
                 C=self.C,
                 gamma=self.gamma,
                 kernel=self.kernel,
-                max_iter=30000,
+                max_iter=20000,
                 random_state=self.random_state,
-                verbose=True  # Will print progress during training
+                verbose=True  # Will print detailed progress during training
             )
             
             try:
+                # Training with scikit-learn's built-in verbose logging
                 self.classifier.fit(X_train, y_train)
+                
                 train_time = time.time() - train_start
                 
-                print(f"\n  ✓ Training completed in {train_time:.2f}s ({train_time/60:.1f} minutes)")
+                # Training completion summary
+                print(f"\n{'='*70}")
+                print(f"✅ SVM Training Completed in {train_time/60:.1f} minutes")
+                print(f"{'='*70}")
+                print(f"  Samples processed: {X_train.shape[0]:,}")
+                print(f"  Support vectors: {self.classifier.n_support_.sum():,} ({self.classifier.n_support_.sum()/X_train.shape[0]*100:.1f}%)")
+                print(f"  Support vectors per class:")
+                for class_id, n_sv in enumerate(self.classifier.n_support_):
+                    class_name = self.id2label[class_id]
+                    print(f"    - {class_name}: {n_sv:,}")
+                print(f"{'='*70}\n")
                 
                 # Save checkpoint IMMEDIATELY after training
                 if self.checkpoint_manager:
                     self.checkpoint_manager.save_model(self.classifier, 'svm_trained')
                     self.checkpoint_manager.mark_stage_completed(
                         'svm_trained',
-                        {'train_time': train_time, 'C': self.C, 'gamma': str(self.gamma)}
+                        {
+                            'train_time': train_time,
+                            'C': self.C,
+                            'gamma': str(self.gamma),
+                            'kernel': self.kernel,
+                            'n_support_vectors': int(self.classifier.n_support_.sum()),
+                            'training_samples': X_train.shape[0],
+                            'features': X_train.shape[1]
+                        }
                     )
-                    print(f"  💾 Model checkpoint saved successfully")
                 
                 self.is_fitted = True
                 
             except KeyboardInterrupt:
-                print(f"\n⚠️  Training interrupted! No checkpoint saved.")
-                print(f"   Next run will restart SVM training from beginning.")
+                elapsed = (time.time() - train_start) / 60
+                print(f"\n⚠️  Training interrupted after {elapsed:.1f} minutes - no checkpoint saved")
+                raise
+            
+            except Exception as e:
+                elapsed = (time.time() - train_start) / 60
+                print(f"\n❌ Training failed after {elapsed:.1f} minutes: {str(e)}")
                 raise
         
         print("\n✓ Training complete!")
