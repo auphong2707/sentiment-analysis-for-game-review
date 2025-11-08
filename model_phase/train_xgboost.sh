@@ -14,8 +14,8 @@ readonly DEFAULT_COLSAMPLE_BYTREE=1.0
 
 # Grid search parameters (optimized for imbalanced classes)
 readonly LEARNING_RATE_VALUES=(0.05 0.1 0.15)
-readonly N_ESTIMATORS_VALUES=(2000 2500 3000)
-readonly MAX_DEPTH_VALUES=(4 6)
+readonly N_ESTIMATORS_VALUES=(2000 2500 3000 3500)
+readonly MAX_DEPTH_VALUES=(4 6 8)
 readonly MIN_CHILD_WEIGHT_VALUES=(1 3 5)
 readonly SUBSAMPLE_VALUES=(0.8 1.0)
 readonly COLSAMPLE_BYTREE_VALUES=(0.6 0.8 1.0)

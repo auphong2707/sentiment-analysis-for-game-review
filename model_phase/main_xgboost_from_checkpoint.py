@@ -481,43 +481,82 @@ def run_grid_search(checkpoint_dir,
     best_config = None
     
     for current, (n_est, max_d, lr, min_cw, ss, colsample, reg_l) in enumerate(config_combinations, 1):
-        print(f"\n{'='*60}")
-        print(f"Configuration {current}/{total_configs}")
-        print(f"{'='*60}")
-        print(f"  n_estimators: {n_est}")
-        print(f"  max_depth: {max_d}")
-        print(f"  learning_rate: {lr}")
+        print(f"[{current}/{total_configs}] Training:")
+        print(f"  n_estimators={n_est}, max_depth={max_d}, lr={lr}")
+        print(f"  min_child_weight={min_cw}, subsample={ss}")
+        print(f"  colsample_bytree={colsample}, reg_lambda={reg_l}")
         
-        # Train model
+        # Train model with early stopping
         model = XGBoostSentimentClassifier(
             n_estimators=n_est,
             max_depth=max_d,
-            learning_rate=lr
+            learning_rate=lr,
+            min_child_weight=min_cw,
+            subsample=ss,
+            colsample_bytree=colsample,
+            reg_lambda=reg_l,
+            objective='multi:softprob'
         )
         
         train_time = model.fit(X_train, y_train, X_val, y_val)
         
-        # Evaluate on validation set
-        val_results = evaluate_classifier(model, X_val, y_val, "Validation")
+        # Evaluate on validation set with macro averaging (equal weight for all classes)
+        predictions = model.predict(X_val)
+        accuracy = accuracy_score(y_val, predictions)
         
-        # Store results
-        config_result = {
-            'n_estimators': n_est,
-            'max_depth': max_d,
-            'learning_rate': lr,
-            'train_time': train_time,
-            'val_accuracy': val_results['validation_accuracy'],
-            'val_f1': val_results['validation_f1'],
-            'val_precision': val_results['validation_precision'],
-            'val_recall': val_results['validation_recall']
-        }
-        results.append(config_result)
+        # Calculate both weighted and macro metrics
+        precision_weighted, recall_weighted, f1_weighted, _ = precision_recall_fscore_support(
+            y_val, predictions, average='weighted', zero_division=0
+        )
+        precision_macro, recall_macro, f1_macro, _ = precision_recall_fscore_support(
+            y_val, predictions, average='macro', zero_division=0
+        )
         
-        # Update best config
-        if val_results['validation_f1'] > best_f1:
-            best_f1 = val_results['validation_f1']
-            best_config = config_result
-            print(f"\n  ✓ New best F1: {best_f1:.4f}")
+        # Track best config based on f1_macro (prioritize balanced performance)
+        if f1_macro > best_f1_macro:
+            best_f1_macro = f1_macro
+            best_config = {
+                'n_estimators': n_est,
+                'max_depth': max_d,
+                'learning_rate': lr,
+                'min_child_weight': min_cw,
+                'subsample': ss,
+                'colsample_bytree': colsample,
+                'reg_lambda': reg_l,
+                'val_accuracy': float(accuracy),
+                'val_precision_weighted': float(precision_weighted),
+                'val_recall_weighted': float(recall_weighted),
+                'val_f1_weighted': float(f1_weighted),
+                'val_precision_macro': float(precision_macro),
+                'val_recall_macro': float(recall_macro),
+                'val_f1_macro': float(f1_macro),
+                'train_time': float(train_time)
+            }
+        
+        # Save result
+        results.append({
+            'config': {
+                'n_estimators': n_est,
+                'max_depth': max_d,
+                'learning_rate': lr,
+                'min_child_weight': min_cw,
+                'subsample': ss,
+                'colsample_bytree': colsample,
+                'reg_lambda': reg_l
+            },
+            'val_accuracy': float(accuracy),
+            'val_precision_weighted': float(precision_weighted),
+            'val_recall_weighted': float(recall_weighted),
+            'val_f1_weighted': float(f1_weighted),
+            'val_precision_macro': float(precision_macro),
+            'val_recall_macro': float(recall_macro),
+            'val_f1_macro': float(f1_macro),
+            'train_time': float(train_time)
+        })
+        
+        print(f"  Val F1-Macro: {f1_macro:.4f}, F1-Weighted: {f1_weighted:.4f}")
+        print(f"  Accuracy: {accuracy:.4f}, Time: {train_time:.2f}s")
+        print("")
     
     # Save results
     print(f"\n{'='*60}")
@@ -535,21 +574,28 @@ def run_grid_search(checkpoint_dir,
     # Save best config
     best_config_file = output_dir / 'best_config.txt'
     with open(best_config_file, 'w') as f:
-        f.write(f"Best Configuration Found:\n")
-        f.write(f"  n_estimators: {best_config['n_estimators']}\n")
-        f.write(f"  max_depth: {best_config['max_depth']}\n")
-        f.write(f"  learning_rate: {best_config['learning_rate']}\n")
-        f.write(f"  Val F1: {best_config['val_f1']:.4f}\n")
-        f.write(f"  Val Accuracy: {best_config['val_accuracy']:.4f}\n")
+        f.write(f"Best Configuration (based on validation F1-Macro):\n")
+        f.write(f"n_estimators: {best_config['n_estimators']}\n")
+        f.write(f"max_depth: {best_config['max_depth']}\n")
+        f.write(f"learning_rate: {best_config['learning_rate']}\n")
+        f.write(f"min_child_weight: {best_config['min_child_weight']}\n")
+        f.write(f"subsample: {best_config['subsample']}\n")
+        f.write(f"colsample_bytree: {best_config['colsample_bytree']}\n")
+        f.write(f"reg_lambda: {best_config['reg_lambda']}\n")
     
     print(f"\n✓ Results saved to: {results_file}")
     print(f"✓ Best config saved to: {best_config_file}")
     
-    print(f"\nBest Configuration:")
+    print(f"\nBest Configuration (optimized for F1-Macro):")
     print(f"  n_estimators: {best_config['n_estimators']}")
     print(f"  max_depth: {best_config['max_depth']}")
     print(f"  learning_rate: {best_config['learning_rate']}")
-    print(f"  Val F1: {best_config['val_f1']:.4f}")
+    print(f"  min_child_weight: {best_config['min_child_weight']}")
+    print(f"  subsample: {best_config['subsample']}")
+    print(f"  colsample_bytree: {best_config['colsample_bytree']}")
+    print(f"  reg_lambda: {best_config['reg_lambda']}")
+    print(f"  Val F1-Macro: {best_config['val_f1_macro']:.4f}")
+    print(f"  Val F1-Weighted: {best_config['val_f1_weighted']:.4f}")
     print(f"  Val Accuracy: {best_config['val_accuracy']:.4f}")
     
     return best_config
