@@ -64,7 +64,7 @@ except ImportError:
 class CheckpointLoader:
     """Loads pre-computed embeddings and labels from checkpoint."""
     
-    def __init__(self, checkpoint_dir):
+    def __init__(self, checkpoint_dir, dataset_name=None):
         self.checkpoint_dir = Path(checkpoint_dir)
         if not self.checkpoint_dir.exists():
             raise FileNotFoundError(f"Checkpoint directory not found: {checkpoint_dir}")
@@ -88,6 +88,26 @@ class CheckpointLoader:
         for stage in required_stages:
             if stage not in self.state['completed_stages']:
                 raise ValueError(f"Required stage '{stage}' not found in checkpoint")
+        
+        # Store dataset name for loading labels
+        self.dataset_name = dataset_name
+        self._dataset_cache = {}
+    
+    def _load_labels_from_dataset(self, split_name):
+        """Load labels from HuggingFace dataset."""
+        if split_name in self._dataset_cache:
+            return self._dataset_cache[split_name]
+        
+        if not self.dataset_name:
+            raise ValueError("dataset_name is required to load labels")
+        
+        print(f"  Loading {split_name} labels from HuggingFace dataset...")
+        from datasets import load_dataset
+        dataset = load_dataset(self.dataset_name, split=split_name)
+        labels = np.array(dataset['label'])
+        
+        self._dataset_cache[split_name] = labels
+        return labels
     
     def load_embeddings(self, split_name, subset_percentage=1.0):
         """Load embeddings for a specific split (train/val/test)."""
@@ -104,7 +124,14 @@ class CheckpointLoader:
         print(f"\nLoading {split_name} embeddings from checkpoint...")
         data = np.load(embed_file, allow_pickle=True)
         embeddings = data['embeddings']
-        labels = data['labels']
+        
+        # Try to load labels from checkpoint, if not available load from dataset
+        if 'labels' in data:
+            labels = data['labels']
+            print(f"  ✓ Labels loaded from checkpoint")
+        else:
+            print(f"  ⚠️  Labels not in checkpoint, loading from dataset...")
+            labels = self._load_labels_from_dataset(split_name)
         
         # Apply subset if needed
         if subset_percentage < 1.0:
@@ -353,6 +380,7 @@ def evaluate_classifier(model, X, y, split_name="Test", use_wandb=False):
 
 
 def run_grid_search(checkpoint_dir,
+                    dataset_name=None,
                     n_estimators_values=[100, 200],
                     max_depth_values=[6, 8],
                     learning_rate_values=[0.1, 0.3],
@@ -371,7 +399,7 @@ def run_grid_search(checkpoint_dir,
     output_dir.mkdir(parents=True, exist_ok=True)
     
     # Load embeddings from checkpoint
-    loader = CheckpointLoader(checkpoint_dir)
+    loader = CheckpointLoader(checkpoint_dir, dataset_name=dataset_name)
     
     print(f"\n{'='*60}")
     print("Loading embeddings from checkpoint (train + val only)")
@@ -503,6 +531,7 @@ def main(checkpoint_dir,
         gridsearch_dir = output_dir or 'model_phase/results/gridsearch_xgboost'
         best_config = run_grid_search(
             checkpoint_dir,
+            dataset_name=dataset_name,
             n_estimators_values=n_estimators_values,
             max_depth_values=max_depth_values,
             learning_rate_values=learning_rate_values,
@@ -573,7 +602,7 @@ def main(checkpoint_dir,
         )
     
     # Load embeddings from checkpoint
-    loader = CheckpointLoader(checkpoint_dir)
+    loader = CheckpointLoader(checkpoint_dir, dataset_name=dataset_name)
     
     print(f"\n{'='*60}")
     print("Loading embeddings from checkpoint")
