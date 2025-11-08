@@ -515,7 +515,6 @@ def main(checkpoint_dir,
         gridsearch_dir = output_dir or 'model_phase/results/gridsearch_xgboost'
         best_config = run_grid_search(
             checkpoint_dir,
-            dataset_name=dataset_name,
             n_estimators_values=n_estimators_values,
             max_depth_values=max_depth_values,
             learning_rate_values=learning_rate_values,
