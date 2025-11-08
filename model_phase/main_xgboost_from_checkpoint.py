@@ -365,7 +365,6 @@ def evaluate_classifier(model, X, y, split_name="Test", use_wandb=False):
 
 
 def run_grid_search(checkpoint_dir,
-                    dataset_name=None,
                     n_estimators_values=[100, 200],
                     max_depth_values=[6, 8],
                     learning_rate_values=[0.1, 0.3],
