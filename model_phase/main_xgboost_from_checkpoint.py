@@ -156,6 +156,10 @@ class XGBoostSentimentClassifier:
                  learning_rate=0.3,
                  subsample=1.0,
                  colsample_bytree=1.0,
+                 min_child_weight=1,
+                 gamma=0,
+                 reg_alpha=0.1,
+                 reg_lambda=1.0,
                  random_state=42,
                  use_gpu=True):
         """
@@ -167,6 +171,10 @@ class XGBoostSentimentClassifier:
             learning_rate: Learning rate (eta)
             subsample: Subsample ratio of training instances
             colsample_bytree: Subsample ratio of columns when constructing each tree
+            min_child_weight: Minimum sum of instance weight needed in a child
+            gamma: Minimum loss reduction required to make a split
+            reg_alpha: L1 regularization term on weights
+            reg_lambda: L2 regularization term on weights
             random_state: Random seed
             use_gpu: Whether to use GPU for training
         """
@@ -175,6 +183,10 @@ class XGBoostSentimentClassifier:
         self.learning_rate = learning_rate
         self.subsample = subsample
         self.colsample_bytree = colsample_bytree
+        self.min_child_weight = min_child_weight
+        self.gamma = gamma
+        self.reg_alpha = reg_alpha
+        self.reg_lambda = reg_lambda
         self.random_state = random_state
         self.use_gpu = use_gpu
         
@@ -193,6 +205,17 @@ class XGBoostSentimentClassifier:
         self.label_encoder = LabelEncoder()
         y_train_encoded = self.label_encoder.fit_transform(y_train)
         
+        # Calculate class weights to handle imbalance
+        from sklearn.utils.class_weight import compute_sample_weight
+        sample_weights = compute_sample_weight('balanced', y_train)
+        
+        # Print class distribution
+        unique, counts = np.unique(y_train, return_counts=True)
+        print(f"\nClass distribution:")
+        for label, count in zip(unique, counts):
+            print(f"  {label}: {count} ({count/len(y_train)*100:.2f}%)")
+        print(f"\nUsing balanced sample weights to handle class imbalance")
+        
         # XGBoost parameters
         params = {
             'objective': 'multi:softmax',
@@ -204,6 +227,11 @@ class XGBoostSentimentClassifier:
             'random_state': self.random_state,
             'eval_metric': 'mlogloss',
             'tree_method': 'hist',  # Use histogram-based algorithm
+            # Parameters to improve minority class performance
+            'min_child_weight': self.min_child_weight,  # Allow smaller leaf nodes for minority class
+            'gamma': self.gamma,  # Minimum loss reduction for split
+            'reg_alpha': self.reg_alpha,  # L1 regularization to prevent overfitting
+            'reg_lambda': self.reg_lambda,  # L2 regularization
         }
         
         # Use GPU if available and requested
@@ -223,9 +251,13 @@ class XGBoostSentimentClassifier:
         print(f"  learning_rate: {self.learning_rate}")
         print(f"  subsample: {self.subsample}")
         print(f"  colsample_bytree: {self.colsample_bytree}")
+        print(f"  min_child_weight: {self.min_child_weight}")
+        print(f"  gamma: {self.gamma}")
+        print(f"  reg_alpha: {self.reg_alpha}")
+        print(f"  reg_lambda: {self.reg_lambda}")
         
-        # Create DMatrix
-        dtrain = xgb.DMatrix(X_train, label=y_train_encoded)
+        # Create DMatrix with sample weights
+        dtrain = xgb.DMatrix(X_train, label=y_train_encoded, weight=sample_weights)
         
         # Create evaluation set if validation data provided
         evals = [(dtrain, 'train')]
@@ -605,7 +637,11 @@ def main(checkpoint_dir,
         max_depth=max_depth,
         learning_rate=learning_rate,
         subsample=subsample,
-        colsample_bytree=colsample_bytree
+        colsample_bytree=colsample_bytree,
+        min_child_weight=1,
+        gamma=0,
+        reg_alpha=0.1,
+        reg_lambda=1.0
     )
     
     # Train model

@@ -12,10 +12,10 @@ readonly DEFAULT_LEARNING_RATE=0.3
 readonly DEFAULT_SUBSAMPLE=1.0
 readonly DEFAULT_COLSAMPLE_BYTREE=1.0
 
-# Grid search parameters
+# Grid search parameters (optimized for imbalanced classes)
 readonly N_ESTIMATORS_VALUES=(2000 2500 3000)
-readonly MAX_DEPTH_VALUES=(4 6 8)
-readonly LEARNING_RATE_VALUES=(0.05 0.1 )
+readonly MAX_DEPTH_VALUES=(6 8)
+readonly LEARNING_RATE_VALUES=(0.05 0.1)
 
 # Load dataset from .env if available
 if [ -f .env ]; then
