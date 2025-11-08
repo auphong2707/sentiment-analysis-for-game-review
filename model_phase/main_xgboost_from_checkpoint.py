@@ -628,12 +628,21 @@ def main(checkpoint_dir,
     
     # Grid search mode
     if grid_search:
+        # Set default values for grid search parameters
         if n_estimators_values is None:
-            n_estimators_values = [100, 200]
+            n_estimators_values = [2000, 2500, 3000]
         if max_depth_values is None:
-            max_depth_values = [6, 8]
+            max_depth_values = [4, 6]
         if learning_rate_values is None:
-            learning_rate_values = [0.1, 0.3]
+            learning_rate_values = [0.05, 0.1, 0.15]
+        if min_child_weight_values is None:
+            min_child_weight_values = [1, 3, 5]
+        if subsample_values is None:
+            subsample_values = [0.8, 1.0]
+        if colsample_bytree_values is None:
+            colsample_bytree_values = [0.6, 0.8, 1.0]
+        if reg_lambda_values is None:
+            reg_lambda_values = [1, 5, 10]
         
         gridsearch_dir = output_dir or 'model_phase/results/gridsearch_xgboost'
         best_config = run_grid_search(
@@ -641,7 +650,11 @@ def main(checkpoint_dir,
             n_estimators_values=n_estimators_values,
             max_depth_values=max_depth_values,
             learning_rate_values=learning_rate_values,
-            subset=0.1,
+            min_child_weight_values=min_child_weight_values,
+            subsample_values=subsample_values,
+            colsample_bytree_values=colsample_bytree_values,
+            reg_lambda_values=reg_lambda_values,
+            subset=subset,
             output_dir=gridsearch_dir
         )
         return best_config
