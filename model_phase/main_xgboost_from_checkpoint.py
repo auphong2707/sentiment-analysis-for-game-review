@@ -273,7 +273,7 @@ class XGBoostSentimentClassifier:
         start_time = time.time()
         
         # Set up early stopping if validation set is available
-        early_stopping_rounds = 50 if X_val is not None else None
+        early_stopping_rounds = 200 if X_val is not None else None
         
         self.model = xgb.train(
             params,
