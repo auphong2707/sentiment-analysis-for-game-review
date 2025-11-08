@@ -104,7 +104,7 @@ class CheckpointLoader:
         print(f"  Loading {split_name} labels from HuggingFace dataset...")
         from datasets import load_dataset
         dataset = load_dataset(self.dataset_name, split=split_name)
-        labels = np.array(dataset['label'])
+        labels = np.array(dataset['review_category'])
         
         self._dataset_cache[split_name] = labels
         return labels
