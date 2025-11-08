@@ -390,7 +390,7 @@ def run_grid_search(checkpoint_dir,
     print(f"{'='*60}")
     
     X_train, y_train = loader.load_embeddings('train', subset_percentage=subset)
-    X_val, y_val = loader.load_embeddings('val', subset_percentage=subset)
+    X_val, y_val = loader.load_embeddings('validation', subset_percentage=subset)
     
     # Grid search
     print(f"\n{'='*60}")
@@ -592,7 +592,7 @@ def main(checkpoint_dir,
     print(f"{'='*60}")
     
     X_train, y_train = loader.load_embeddings('train', subset_percentage=subset)
-    X_val, y_val = loader.load_embeddings('val', subset_percentage=subset)
+    X_val, y_val = loader.load_embeddings('validation', subset_percentage=subset)
     X_test, y_test = loader.load_embeddings('test', subset_percentage=subset)
     
     # Initialize model
