@@ -90,7 +90,7 @@ fi
 REQUIRED_FILES=(
     "$CHECKPOINT_DIR/checkpoint_state.json"
     "$CHECKPOINT_DIR/train_embeddings_embeddings.npz"
-    "$CHECKPOINT_DIR/val_embeddings_embeddings.npz"
+    "$CHECKPOINT_DIR/validation_embeddings_embeddings.npz"
     "$CHECKPOINT_DIR/test_embeddings_embeddings.npz"
 )
 
