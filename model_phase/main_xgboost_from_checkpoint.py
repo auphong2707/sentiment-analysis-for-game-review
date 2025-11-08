@@ -161,7 +161,8 @@ class XGBoostSentimentClassifier:
                  reg_alpha=0.1,
                  reg_lambda=1.0,
                  random_state=42,
-                 use_gpu=True):
+                 use_gpu=True,
+                 objective='multi:softprob'):
         """
         Initialize XGBoost classifier.
         
@@ -189,6 +190,7 @@ class XGBoostSentimentClassifier:
         self.reg_lambda = reg_lambda
         self.random_state = random_state
         self.use_gpu = use_gpu
+        self.objective = objective
         
         self.model = None
         self.label_encoder = None
@@ -216,9 +218,9 @@ class XGBoostSentimentClassifier:
             print(f"  {label}: {count} ({count/len(y_train)*100:.2f}%)")
         print(f"\nUsing balanced sample weights to handle class imbalance")
         
-        # XGBoost parameters
+        # XGBoost parameters with multi:softprob for probability output
         params = {
-            'objective': 'multi:softmax',
+            'objective': self.objective,  # Use configurable objective (multi:softprob)
             'num_class': len(self.label_encoder.classes_),
             'max_depth': self.max_depth,
             'learning_rate': self.learning_rate,
@@ -266,19 +268,26 @@ class XGBoostSentimentClassifier:
             dval = xgb.DMatrix(X_val, label=y_val_encoded)
             evals.append((dval, 'val'))
         
-        # Train model
-        print("\nTraining model...")
+        # Train model with early stopping
+        print("\nTraining model with early stopping (patience=50 rounds)...")
         start_time = time.time()
+        
+        # Set up early stopping if validation set is available
+        early_stopping_rounds = 50 if X_val is not None else None
         
         self.model = xgb.train(
             params,
             dtrain,
             num_boost_round=self.n_estimators,
             evals=evals,
+            early_stopping_rounds=early_stopping_rounds,
             verbose_eval=False
         )
         
         train_time = time.time() - start_time
+        
+        if early_stopping_rounds and X_val is not None:
+            print(f"  Best iteration: {self.model.best_iteration + 1}/{self.n_estimators}")
         
         print(f"\n✓ Training completed in {train_time:.2f}s")
         
@@ -290,8 +299,17 @@ class XGBoostSentimentClassifier:
             raise ValueError("Model not trained. Call fit() first.")
         
         dtest = xgb.DMatrix(X)
-        y_pred_encoded = self.model.predict(dtest)
-        y_pred = self.label_encoder.inverse_transform(y_pred_encoded.astype(int))
+        y_pred_proba = self.model.predict(dtest)
+        
+        # Handle both softmax (1D) and softprob (2D) outputs
+        if len(y_pred_proba.shape) == 1:
+            # softmax output: already class indices
+            y_pred_encoded = y_pred_proba.astype(int)
+        else:
+            # softprob output: probabilities, need to get argmax
+            y_pred_encoded = np.argmax(y_pred_proba, axis=1)
+        
+        y_pred = self.label_encoder.inverse_transform(y_pred_encoded)
         
         return y_pred
     
@@ -400,6 +418,10 @@ def run_grid_search(checkpoint_dir,
                     n_estimators_values=[100, 200],
                     max_depth_values=[6, 8],
                     learning_rate_values=[0.1, 0.3],
+                    min_child_weight_values=[1],
+                    subsample_values=[1.0],
+                    colsample_bytree_values=[1.0],
+                    reg_lambda_values=[1.0],
                     subset=0.1,
                     output_dir='model_phase/results/gridsearch_xgboost'):
     """
@@ -428,20 +450,37 @@ def run_grid_search(checkpoint_dir,
     print(f"\n{'='*60}")
     print("Grid Search on XGBoost hyperparameters")
     print(f"{'='*60}")
+    print("Using f1_macro scoring (equal weight for all classes including mixed)")
+    print("")
     
     # Generate all combinations
     from itertools import product
-    config_combinations = list(product(n_estimators_values, max_depth_values, learning_rate_values))
+    config_combinations = list(product(
+        n_estimators_values,
+        max_depth_values,
+        learning_rate_values,
+        min_child_weight_values,
+        subsample_values,
+        colsample_bytree_values,
+        reg_lambda_values
+    ))
     
     total_configs = len(config_combinations)
     print(f"Total configurations: {total_configs}")
+    print(f"  n_estimators: {n_estimators_values}")
+    print(f"  max_depth: {max_depth_values}")
+    print(f"  learning_rate: {learning_rate_values}")
+    print(f"  min_child_weight: {min_child_weight_values}")
+    print(f"  subsample: {subsample_values}")
+    print(f"  colsample_bytree: {colsample_bytree_values}")
+    print(f"  reg_lambda: {reg_lambda_values}")
     print("")
     
     results = []
-    best_f1 = 0
+    best_f1_macro = 0
     best_config = None
     
-    for current, (n_est, max_d, lr) in enumerate(config_combinations, 1):
+    for current, (n_est, max_d, lr, min_cw, ss, colsample, reg_l) in enumerate(config_combinations, 1):
         print(f"\n{'='*60}")
         print(f"Configuration {current}/{total_configs}")
         print(f"{'='*60}")
@@ -523,6 +562,8 @@ def main(checkpoint_dir,
          learning_rate=0.3,
          subsample=1.0,
          colsample_bytree=1.0,
+         min_child_weight=1,
+         reg_lambda=1.0,
          subset=1.0,
          output_dir=None,
          use_wandb=False,
@@ -532,7 +573,11 @@ def main(checkpoint_dir,
          grid_search=False,
          n_estimators_values=None,
          max_depth_values=None,
-         learning_rate_values=None):
+         learning_rate_values=None,
+         min_child_weight_values=None,
+         subsample_values=None,
+         colsample_bytree_values=None,
+         reg_lambda_values=None):
     """Main training pipeline."""
     
     # Grid search mode
@@ -638,10 +683,11 @@ def main(checkpoint_dir,
         learning_rate=learning_rate,
         subsample=subsample,
         colsample_bytree=colsample_bytree,
-        min_child_weight=1,
+        min_child_weight=min_child_weight,
         gamma=0,
         reg_alpha=0.1,
-        reg_lambda=1.0
+        reg_lambda=reg_lambda,
+        objective='multi:softprob'
     )
     
     # Train model
@@ -739,6 +785,10 @@ if __name__ == "__main__":
                         help='Subsample ratio of training instances')
     parser.add_argument('--colsample_bytree', type=float, default=1.0,
                         help='Subsample ratio of columns')
+    parser.add_argument('--min_child_weight', type=int, default=1,
+                        help='Minimum sum of instance weight needed in a child')
+    parser.add_argument('--reg_lambda', type=float, default=1.0,
+                        help='L2 regularization term on weights')
     parser.add_argument('--subset', type=float, default=1.0,
                         help='Fraction of checkpoint data to use')
     parser.add_argument('--output_dir', type=str, default=None,
@@ -761,6 +811,14 @@ if __name__ == "__main__":
                         help='max_depth values for grid search')
     parser.add_argument('--learning_rate_values', type=float, nargs='+', default=None,
                         help='learning_rate values for grid search')
+    parser.add_argument('--min_child_weight_values', type=int, nargs='+', default=None,
+                        help='min_child_weight values for grid search')
+    parser.add_argument('--subsample_values', type=float, nargs='+', default=None,
+                        help='subsample values for grid search')
+    parser.add_argument('--colsample_bytree_values', type=float, nargs='+', default=None,
+                        help='colsample_bytree values for grid search')
+    parser.add_argument('--reg_lambda_values', type=float, nargs='+', default=None,
+                        help='reg_lambda values for grid search')
     
     args = parser.parse_args()
     
@@ -774,6 +832,8 @@ if __name__ == "__main__":
         learning_rate=args.learning_rate,
         subsample=args.subsample,
         colsample_bytree=args.colsample_bytree,
+        min_child_weight=args.min_child_weight,
+        reg_lambda=args.reg_lambda,
         subset=args.subset,
         output_dir=args.output_dir,
         use_wandb=args.use_wandb,
@@ -783,5 +843,9 @@ if __name__ == "__main__":
         grid_search=args.grid_search,
         n_estimators_values=args.n_estimators_values,
         max_depth_values=args.max_depth_values,
-        learning_rate_values=args.learning_rate_values
+        learning_rate_values=args.learning_rate_values,
+        min_child_weight_values=args.min_child_weight_values,
+        subsample_values=args.subsample_values,
+        colsample_bytree_values=args.colsample_bytree_values,
+        reg_lambda_values=args.reg_lambda_values
     )

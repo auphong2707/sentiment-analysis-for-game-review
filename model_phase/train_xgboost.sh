@@ -13,9 +13,13 @@ readonly DEFAULT_SUBSAMPLE=1.0
 readonly DEFAULT_COLSAMPLE_BYTREE=1.0
 
 # Grid search parameters (optimized for imbalanced classes)
+readonly LEARNING_RATE_VALUES=(0.05 0.1 0.15)
 readonly N_ESTIMATORS_VALUES=(2000 2500 3000)
-readonly MAX_DEPTH_VALUES=(6 8)
-readonly LEARNING_RATE_VALUES=(0.05 0.1)
+readonly MAX_DEPTH_VALUES=(4 6)
+readonly MIN_CHILD_WEIGHT_VALUES=(1 3 5)
+readonly SUBSAMPLE_VALUES=(0.8 1.0)
+readonly COLSAMPLE_BYTREE_VALUES=(0.6 0.8 1.0)
+readonly REG_LAMBDA_VALUES=(1 5 10)
 
 # Load dataset from .env if available
 if [ -f .env ]; then
@@ -135,14 +139,22 @@ if [ "$SKIP_GRIDSEARCH" = false ]; then
         --output_dir $GRIDSEARCH_DIR"
     
     # Convert arrays to space-separated strings
+    LR_STR="${LEARNING_RATE_VALUES[@]}"
     N_EST_STR="${N_ESTIMATORS_VALUES[@]}"
     MAX_D_STR="${MAX_DEPTH_VALUES[@]}"
-    LR_STR="${LEARNING_RATE_VALUES[@]}"
+    MIN_CW_STR="${MIN_CHILD_WEIGHT_VALUES[@]}"
+    SS_STR="${SUBSAMPLE_VALUES[@]}"
+    COL_STR="${COLSAMPLE_BYTREE_VALUES[@]}"
+    REG_L_STR="${REG_LAMBDA_VALUES[@]}"
     
     GRIDSEARCH_CMD="$GRIDSEARCH_CMD \
+        --learning_rate_values $LR_STR \
         --n_estimators_values $N_EST_STR \
         --max_depth_values $MAX_D_STR \
-        --learning_rate_values $LR_STR"
+        --min_child_weight_values $MIN_CW_STR \
+        --subsample_values $SS_STR \
+        --colsample_bytree_values $COL_STR \
+        --reg_lambda_values $REG_L_STR"
     
     echo "Running: $GRIDSEARCH_CMD"
     echo ""
@@ -184,6 +196,10 @@ else
     BEST_N_ESTIMATORS=$(grep "n_estimators:" "$BEST_CONFIG_FILE" | awk '{print $2}')
     BEST_MAX_DEPTH=$(grep "max_depth:" "$BEST_CONFIG_FILE" | awk '{print $2}')
     BEST_LEARNING_RATE=$(grep "learning_rate:" "$BEST_CONFIG_FILE" | awk '{print $2}')
+    BEST_MIN_CHILD_WEIGHT=$(grep "min_child_weight:" "$BEST_CONFIG_FILE" | awk '{print $2}')
+    BEST_SUBSAMPLE=$(grep "subsample:" "$BEST_CONFIG_FILE" | awk '{print $2}')
+    BEST_COLSAMPLE_BYTREE=$(grep "colsample_bytree:" "$BEST_CONFIG_FILE" | awk '{print $2}')
+    BEST_REG_LAMBDA=$(grep "reg_lambda:" "$BEST_CONFIG_FILE" | awk '{print $2}')
     
     # Validate extracted values
     if [ -z "$BEST_N_ESTIMATORS" ] || [ -z "$BEST_MAX_DEPTH" ] || [ -z "$BEST_LEARNING_RATE" ]; then
@@ -192,15 +208,21 @@ else
         BEST_N_ESTIMATORS=$DEFAULT_N_ESTIMATORS
         BEST_MAX_DEPTH=$DEFAULT_MAX_DEPTH
         BEST_LEARNING_RATE=$DEFAULT_LEARNING_RATE
+        BEST_MIN_CHILD_WEIGHT=1
+        BEST_SUBSAMPLE=$DEFAULT_SUBSAMPLE
+        BEST_COLSAMPLE_BYTREE=$DEFAULT_COLSAMPLE_BYTREE
+        BEST_REG_LAMBDA=1.0
     fi
 fi
 
 echo "Hyperparameters for final training:"
+echo "  learning_rate: $BEST_LEARNING_RATE"
 echo "  n_estimators: $BEST_N_ESTIMATORS"
 echo "  max_depth: $BEST_MAX_DEPTH"
-echo "  learning_rate: $BEST_LEARNING_RATE"
-echo "  subsample: $DEFAULT_SUBSAMPLE (fixed)"
-echo "  colsample_bytree: $DEFAULT_COLSAMPLE_BYTREE (fixed)"
+echo "  min_child_weight: $BEST_MIN_CHILD_WEIGHT"
+echo "  subsample: $BEST_SUBSAMPLE"
+echo "  colsample_bytree: $BEST_COLSAMPLE_BYTREE"
+echo "  reg_lambda: $BEST_REG_LAMBDA"
 echo ""
 
 # Step 3: Final Training with Best Configuration
@@ -212,16 +234,18 @@ echo "This model will be uploaded to HuggingFace Hub."
 echo ""
 
 # Create experiment name for final training
-FINAL_EXPERIMENT_NAME="xgboost_n${BEST_N_ESTIMATORS}_d${BEST_MAX_DEPTH}_lr${BEST_LEARNING_RATE}"
+FINAL_EXPERIMENT_NAME="xgboost_lr${BEST_LEARNING_RATE}_n${BEST_N_ESTIMATORS}_d${BEST_MAX_DEPTH}_mcw${BEST_MIN_CHILD_WEIGHT}"
 
 # Build final training command
 FINAL_CMD="python model_phase/main_xgboost_from_checkpoint.py \
     --checkpoint_dir $CHECKPOINT_DIR \
+    --learning_rate $BEST_LEARNING_RATE \
     --n_estimators $BEST_N_ESTIMATORS \
     --max_depth $BEST_MAX_DEPTH \
-    --learning_rate $BEST_LEARNING_RATE \
-    --subsample $DEFAULT_SUBSAMPLE \
-    --colsample_bytree $DEFAULT_COLSAMPLE_BYTREE \
+    --min_child_weight $BEST_MIN_CHILD_WEIGHT \
+    --subsample $BEST_SUBSAMPLE \
+    --colsample_bytree $BEST_COLSAMPLE_BYTREE \
+    --reg_lambda $BEST_REG_LAMBDA \
     --subset $FINAL_SUBSET \
     --experiment_name $FINAL_EXPERIMENT_NAME"
 
@@ -253,12 +277,14 @@ echo "1. ✓ Grid search found best hyperparameters"
 echo "2. ✓ Final model trained with optimal configuration"
 echo "3. ✓ Results saved to output directory"
 echo ""
-echo "Best Configuration Used:"
+echo "Best Configuration Used (optimized for F1-Macro):"
+echo "  learning_rate: $BEST_LEARNING_RATE"
 echo "  n_estimators: $BEST_N_ESTIMATORS"
 echo "  max_depth: $BEST_MAX_DEPTH"
-echo "  learning_rate: $BEST_LEARNING_RATE"
-echo "  subsample: $DEFAULT_SUBSAMPLE"
-echo "  colsample_bytree: $DEFAULT_COLSAMPLE_BYTREE"
+echo "  min_child_weight: $BEST_MIN_CHILD_WEIGHT"
+echo "  subsample: $BEST_SUBSAMPLE"
+echo "  colsample_bytree: $BEST_COLSAMPLE_BYTREE"
+echo "  reg_lambda: $BEST_REG_LAMBDA"
 echo ""
 echo "Checkpoint Directory: $CHECKPOINT_DIR"
 echo "Output Directory: $OUTPUT_BASE_DIR"
