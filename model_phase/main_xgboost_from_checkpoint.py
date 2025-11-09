@@ -208,15 +208,31 @@ class XGBoostSentimentClassifier:
         y_train_encoded = self.label_encoder.fit_transform(y_train)
         
         # Calculate class weights to handle imbalance
-        from sklearn.utils.class_weight import compute_sample_weight
-        sample_weights = compute_sample_weight('balanced', y_train)
+        from sklearn.utils.class_weight import compute_class_weight
         
         # Print class distribution
         unique, counts = np.unique(y_train, return_counts=True)
         print(f"\nClass distribution:")
         for label, count in zip(unique, counts):
             print(f"  {label}: {count} ({count/len(y_train)*100:.2f}%)")
-        print(f"\nUsing balanced sample weights to handle class imbalance")
+        
+        # Compute class weights (balanced)
+        class_weights = compute_class_weight(
+            'balanced',
+            classes=np.unique(y_train_encoded),
+            y=y_train_encoded
+        )
+        
+        # Create weight dictionary for XGBoost
+        # XGBoost expects: weight of class i = base_weight * class_weight[i]
+        # We'll use sample weights approach which XGBoost handles better
+        sample_weights = np.ones(len(y_train_encoded))
+        for i, weight in enumerate(class_weights):
+            sample_weights[y_train_encoded == i] = weight
+        
+        print(f"\nUsing balanced class weights to handle class imbalance:")
+        for i, (label, weight) in enumerate(zip(self.label_encoder.classes_, class_weights)):
+            print(f"  {label}: weight = {weight:.3f}")
         
         # XGBoost parameters with multi:softprob for probability output
         params = {
