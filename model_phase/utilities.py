@@ -35,8 +35,14 @@ def load_dataset_from_hf(dataset_name, subset_percentage=1.0):
     print(f"Loading dataset: {dataset_name}")
     print(f"{'='*60}")
     
-    # Load dataset
-    dataset = load_dataset(dataset_name)
+    # Load dataset with HF token if available (supports private datasets)
+    hf_token = os.getenv('HF_TOKEN')
+    if hf_token:
+        print("✓ Using HF_TOKEN to load dataset (supports private datasets)")
+        dataset = load_dataset(dataset_name, token=hf_token)
+    else:
+        print("ℹ️  Loading public dataset (no HF_TOKEN found)")
+        dataset = load_dataset(dataset_name)
     
     # Extract splits
     train_dataset = dataset['train']
