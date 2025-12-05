@@ -27,8 +27,11 @@ sentiment-analysis-for-game-review/
 │
 ├── model_phase/                    # Phase 3: Model Training
 │   ├── README.md
-│   ├── main_tfidf_baseline.py     # TF-IDF + Logistic Regression baseline
-│   └── results/                    # Training results
+│   ├── main_LSTM_baseline.py      # LSTM baseline model
+│   ├── main_bge_m3.py             # BGE M3 + XGBoost (proposed)
+│   ├── main_roberta.py            # Fine-tuned RoBERTa (proposed)
+│   ├── utilities.py               # Utility functions
+│   └── results/                   # Training results
 │
 ├── data/                           # Data Storage
 │   ├── discovered_games/           # Discovered game lists
@@ -82,17 +85,24 @@ python data_prepare_phase/prepare_and_upload_hf_dataset.py
 Train sentiment analysis models on the prepared dataset.
 
 ```powershell
-# 6. Train baseline model (TF-IDF + Logistic Regression)
-python model_phase/main_tfidf_baseline.py --dataset your-username/game-reviews-sentiment
+# 6. Train baseline model (LSTM)
+python model_phase/main_LSTM_baseline.py --dataset your-username/game-reviews-sentiment
 
-# Optional: Quick test with 10% of data
-python model_phase/main_tfidf_baseline.py --dataset your-username/game-reviews-sentiment --subset 0.1
+# 7. Train proposed methods
+# BGE M3 + XGBoost
+python model_phase/main_bge_m3.py --dataset your-username/game-reviews-sentiment
+
+# Fine-tuned RoBERTa
+python model_phase/main_roberta.py --dataset your-username/game-reviews-sentiment
+
+# Optional: Quick test with subset of data
+python model_phase/main_LSTM_baseline.py --dataset your-username/game-reviews-sentiment --subset 0.1
 
 # Optional: With WandB tracking
-python model_phase/main_tfidf_baseline.py --dataset your-username/game-reviews-sentiment --use_wandb
+python model_phase/main_LSTM_baseline.py --dataset your-username/game-reviews-sentiment --use_wandb
 ```
 
-**Output**: Trained model with metrics and analysis
+**Output**: Trained models with metrics and analysis
 
 ## 🚀 Quick Start
 
@@ -125,8 +135,13 @@ python data_scrape_phase/scrape_all_games.py --input data/discovered_games/disco
 python data_prepare_phase/aggregate_dataset.py
 python data_prepare_phase/prepare_and_upload_hf_dataset.py
 
-# Phase 3: Train Model
-python model_phase/main_tfidf_baseline.py --dataset your-username/game-reviews-sentiment
+# Phase 3: Train Models
+# Baseline
+python model_phase/main_LSTM_baseline.py --dataset your-username/game-reviews-sentiment
+
+# Proposed methods
+python model_phase/main_bge_m3.py --dataset your-username/game-reviews-sentiment
+python model_phase/main_roberta.py --dataset your-username/game-reviews-sentiment
 ```
 
 ## 📦 Requirements
@@ -280,17 +295,18 @@ Each phase has detailed documentation:
 
 ### Model Training
 
-**Implemented:**
-- ✅ TF-IDF + Logistic Regression baseline
-- ✅ Fast training and inference
-- ✅ Interpretable feature importance
+**Baseline:**
+- ✅ LSTM with Word Embeddings (context-aware sequential model)
+- ✅ Captures word order and context
+- ✅ Pre-trained GloVe embeddings
+- ✅ Bidirectional processing
+
+**Proposed Methods:**
+- ✅ BGE M3 + XGBoost (multilingual embeddings with gradient boosting)
+- ✅ Fine-tuned RoBERTa (state-of-the-art transformer model)
 - ✅ Comprehensive metrics (accuracy, precision, recall, F1)
 - ✅ WandB integration for experiment tracking
 - ✅ Model saving and loading
-
-**Planned (Under Development):**
-- 📋 LSTM/GRU with Word Embeddings (context-aware sequential model)
-- 📋 Fine-tuned RoBERTa (state-of-the-art transformer model)
 
 ## 🛡️ Best Practices
 
@@ -362,11 +378,13 @@ playwright install
 ┌─────────────────────────────────────────────────────────┐
 │                Phase 3: Model Training                  │
 ├─────────────────────────────────────────────────────────┤
-│  main_tfidf_baseline.py                                 │
+│  Baseline: main_LSTM_baseline.py                        │
 │       ↓                                                 │
-│  Trained Model + Metrics                                │
+│  Proposed: main_bge_m3.py, main_roberta.py              │
+│       ↓                                                 │
+│  Trained Models + Metrics                               │
 │  - Accuracy, Precision, Recall, F1                      │
-│  - Feature Importance Analysis                          │
+│  - Model Comparison Analysis                            │
 │  - Confusion Matrix                                     │
 └─────────────────────────────────────────────────────────┘
 ```
@@ -387,11 +405,21 @@ from datasets import load_dataset
 dataset = load_dataset("your-username/game-reviews-sentiment")
 ```
 
-Use your trained model:
+Use your trained models:
 ```python
-from model_phase.main_tfidf_baseline import TFIDFSentimentClassifier
+# LSTM Baseline
+from model_phase.main_LSTM_baseline import LSTMSentimentClassifier
+model = LSTMSentimentClassifier.load('model_phase/results/lstm_baseline_TIMESTAMP')
+predictions = model.predict(["This game is amazing!", "Terrible experience"])
 
-model = TFIDFSentimentClassifier.load('model_phase/results/tfidf_baseline_TIMESTAMP')
+# BGE M3 + XGBoost
+from model_phase.main_bge_m3 import BGEM3Classifier
+model = BGEM3Classifier.load('model_phase/results/bge_m3_TIMESTAMP')
+predictions = model.predict(["This game is amazing!", "Terrible experience"])
+
+# RoBERTa
+from model_phase.main_roberta import RoBERTaClassifier
+model = RoBERTaClassifier.load('model_phase/results/roberta_TIMESTAMP')
 predictions = model.predict(["This game is amazing!", "Terrible experience"])
 ```
 
