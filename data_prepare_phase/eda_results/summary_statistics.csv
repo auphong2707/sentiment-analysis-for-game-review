@@ -1,0 +1,6 @@
+,text_length,text_length,text_length,word_count,word_count,word_count,review_text
+,mean,median,std,mean,median,std,count
+review_category,,,,,,,
+mixed,830.07,482.0,951.05,151.02,89.0,171.79,22314
+negative,617.88,346.0,767.72,112.11,63.0,138.86,35710
+positive,550.22,305.0,702.17,100.07,56.0,126.92,88181

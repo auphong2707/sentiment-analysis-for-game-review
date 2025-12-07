@@ -1,0 +1,268 @@
+================================================================================
+DETAILED EDA REPORT - GAME REVIEW SENTIMENT DATASET
+================================================================================
+
+1. BASIC STATISTICS
+--------------------------------------------------------------------------------
+Total reviews: 146,205
+
+Category distribution:
+review_category
+positive    88181
+negative    35710
+mixed       22314
+Name: count, dtype: int64
+
+Text length statistics:
+         text_length     word_count
+count  146205.000000  146205.000000
+mean      609.456311     110.782217
+std       767.412550     138.726581
+min         3.000000       1.000000
+25%       177.000000      32.000000
+50%       336.000000      61.000000
+75%       697.000000     128.000000
+max      8978.000000    1623.000000
+
+
+================================================================================
+CATEGORY: POSITIVE
+================================================================================
+
+Top 30 most common words:
+ 1. game                 - 205,259 times
+ 2. like                 - 41,357 times
+ 3. story                - 39,969 times
+ 4. games                - 36,426 times
+ 5. one                  - 36,061 times
+ 6. great                - 35,952 times
+ 7. good                 - 34,127 times
+ 8. there                - 33,035 times
+ 9. best                 - 30,708 times
+10. play                 - 30,472 times
+11. from                 - 29,574 times
+12. fun                  - 29,192 times
+13. really               - 28,314 times
+14. time                 - 26,177 times
+15. gameplay             - 22,975 times
+16. get                  - 21,281 times
+17. out                  - 20,518 times
+18. much                 - 20,023 times
+19. well                 - 19,197 times
+20. even                 - 19,100 times
+21. graphics             - 18,781 times
+22. new                  - 18,569 times
+23. about                - 18,502 times
+24. played               - 18,454 times
+25. first                - 18,194 times
+26. also                 - 17,558 times
+27. amazing              - 17,179 times
+28. world                - 16,757 times
+29. still                - 16,042 times
+30. characters           - 15,590 times
+
+
+Sample reviews (positive):
+--------------------------------------------------------------------------------
+
+Sample 1:
+A realm reborn is a great title with tons to do and explore. A great game to enjoy with friends and there is always something to do together. FF online isn't just a game it's a community full of great players who are all fun to engage with. It's great that the devs destroyed the previous attempt at FF online and then tied it into the lore behind a realm reborn. It works really well and it's now become a mark of history. It shows that we can all make mistakes but its how we bounce back that matters. I do think it's strange how they didn't just call it Final Fantasy Online. Why the Xiv? I think level balancing for zones are annoying. Why doesn't it have a count down before restoring your level. I sometimes walk out of the zone and it stops me attacking till I select the option to sync again. The trial and game should be tied together. You pay for the game and a subscription? It's wrong to charge for a product you cannot use unless you pay monthly. Even if you have played the trial to level 60 you would still need to buy the game and subscribe to continue. Just make the game the trial. And offer the subscription when you complete the trial. I got the complete addition for half price which gave me all expansions and 30 days subscription which is a good deal. But if I had to buy a game and subscription and the expansions I probably wouldn't have continued past the trial. It just feels like so many different things to buy for 1 product. Speaking of trial I think this is a great move. Offering players an option to try the game shows they know this is a great product. Any company who is willing to give you something 1st before taking your money shows faith in a good product that they know you will wanna purchase when you try it. It's rare to see companies happy to do this because so many games get boring after the 1st couple hours. FF Online actually gets better the longer you hang around. You are constantly learning something new.
+--------------------------------------------------------------------------------
+
+Sample 2:
+Game is absolutely amazing (pun intended). Combat is so satisfying and with a great story to match,the best super hero game of all time and it's not even close to **** 3 goty for me
+--------------------------------------------------------------------------------
+
+Sample 3:
+Best level design I have ever seen and I dont think it has been topped yet. Atleast the part until Arnor Londo.
+--------------------------------------------------------------------------------
+
+Sample 4:
+Spider-Man game is very good, action 10/10 plot 10/10 finale is just excellent I hope that the next Insomniac Games projects will be no worse
+--------------------------------------------------------------------------------
+
+Sample 5:
+Headlander is a really fun romp through a 1970's stylized dystopian future in the genre of a metroidvania, platforming adventure. The player takes on the role of the last surviving human trying to uncover both his/her and humanity's past while trying to escape the clutches of Methuselah, a robot overlord whose intentions are unknown (though probably evil in some fashion). The graphics and sound, both the soundtrack and ambient noises, are phenomenal and really paint the picture of the robotic dystopia well. And of course, being Double Fine, there is an element of goofiness and silliness that helps lighten the mood throughout. The game is not particularly difficult to play through, so those seeking a frenzied challenge should give it a pass. This game is more about immersion and the story unfolding before the player than gaming skills, and Double Fine really nailed the atmosphere in their unique way. Once, the player character got stuck inside the wall/ceiling and a manual restart was required to correct the issue, but this was the only bug encountered and it did not leave any permanent issues after the restart from the last save. The game saves every time the player character enters a new room The price point might be a tad high for some folk's taste, but IMO it is worth it. Definitely pick it up during a sale if you're on the fence now.
+--------------------------------------------------------------------------------
+
+Sample 6:
+This game is GREAT. The graphics, the sound, the music. This game is the best FPS i've played. The missions are full of action and its not run being shot. Is cover and shot with any kind of strategy. Really the best FPS of 2011.
+--------------------------------------------------------------------------------
+
+Sample 7:
+My only real gripe with the game is some camera issues when in tight places and some low res textures. Aside from that this game is amazing. I look forward to part 2.
+--------------------------------------------------------------------------------
+
+Sample 8:
+I’ve finally decided to stop being a stupid and stubborn **** about it and now that I’ve played I’m going to be more fair now, grand theft auto is a very fun expierience with awesome gameplay top notch graphics and surprisingly in depth open world, I’m happy I finally got it and I’m happy to say that any negative things I’ve said before were dead wrong, while I still don’t think the characters or the story were the greatest, I can’t call them bad they are there for a reason and the story wouldn’t be what it was without them. If you want to get it, I say do it but I’m sure you guys have probably already done that.
+--------------------------------------------------------------------------------
+
+Sample 9:
+There should be a GOTY. One of the best atmospheres in the gaming community.
+--------------------------------------------------------------------------------
+
+Sample 10:
+One of the best uncharted games and huge step from U3 as far as gameplay, story, and visuals. Uncharted 4 is basically one huge cake filled with all the flavors that made the other games succeed. I'm not really huge fan of the multiplayer in this game and I think U3 did that much better. The characters are the most fleshed out than they've ever been. The gameplay feels so much betters than the previous games but it stray to far from them so it still feels like a classic uncharted game. Uncharted 4 lacks the really good set pieces that U2 and U3 excelled in but it's other good points make up for that. I don't recommend this game for new uncharted player because I feel a lot of things won't hit the same unless you play the original trilogy first.
+--------------------------------------------------------------------------------
+
+
+================================================================================
+CATEGORY: NEGATIVE
+================================================================================
+
+Top 30 most common words:
+ 1. game                 - 85,641 times
+ 2. like                 - 21,341 times
+ 3. there                - 14,969 times
+ 4. from                 - 14,573 times
+ 5. even                 - 13,924 times
+ 6. games                - 12,068 times
+ 7. play                 - 12,058 times
+ 8. one                  - 11,923 times
+ 9. good                 - 10,807 times
+10. get                  - 10,757 times
+11. time                 - 10,442 times
+12. bad                  -  9,991 times
+13. out                  -  9,493 times
+14. story                -  9,399 times
+15. about                -  9,352 times
+16. really               -  9,038 times
+17. because              -  8,858 times
+18. much                 -  7,061 times
+19. gameplay             -  7,049 times
+20. any                  -  6,740 times
+21. make                 -  6,731 times
+22. first                -  6,454 times
+23. after                -  6,386 times
+24. then                 -  6,118 times
+25. fun                  -  5,965 times
+26. graphics             -  5,956 times
+27. people               -  5,911 times
+28. new                  -  5,910 times
+29. boring               -  5,891 times
+30. money                -  5,816 times
+
+
+Sample reviews (negative):
+--------------------------------------------------------------------------------
+
+Sample 1:
+Totally piece of garbage, this is not a battlefield game, when u get shot u lie there crying for help like some wussy, no big maps (like the true bf 1943) this is 2020 c'mon we want biggggggg maps, it's some weird half ass copy of cod/storm but in a very bad way, it's riddled with cheaters ( yes EA do something), and to top that off there is bf coins u can buy, i rather hang myzelf then buy anything from them again, such a enormoud let down, no true bf veteran should play/buy this piece of dung....
+--------------------------------------------------------------------------------
+
+Sample 2:
+Yet another garbage FPS from worst company in gaming. F**k EA. No I don’t care that game is „better, now after updates”. Releasing **** unfinished, broken, undercooked and buggy product is something I will never be okay with. F**k EA and Dice.
+--------------------------------------------------------------------------------
+
+Sample 3:
+If you are looking for an example of how to destroy a saga, Halo is the perfect chooise. The company looking to get more incomes destroyed the game
+--------------------------------------------------------------------------------
+
+Sample 4:
+I'm sorry folks but this game is entirely overrated. People like to claim that this was the last good Call of Duty, when in fact this is not a very good game. My main beef is with the mutliplayer. In all reality, the singleplayer is great, and typically is with any Call of Duty game, but that's not why you buy COD. You buy COD for multiplayer, and this games multiplayer is terrible. If it's not some kiddies with ACOG snipers tryharding, it's really bad sounding and feeling guns. The dedicated server system is trash in comparison to Black Ops or World at War. You are also stuck with only three killstreaks, in comparison to the newer games. The maps aren't too bad, and the graphics are standard among Call of Duty games, but I just don't like the feel of the multiplayer. This game is overrated, and even MW3 of all the COD games is better than this.
+--------------------------------------------------------------------------------
+
+Sample 5:
+We all know gears players aren't here for the story, but gears has Epic has always delivered on that front by some chance. This game delivers on no fronts. The story is bland at best. There is one boss battle and it was literally the worst one in video game history. All you have to do is strafe around and occasionally take cover( Even on Insane). They junked horde and added Overrun. Overrun is been broken since the demo/beta and has no appeal. The sad part is you can still play the Demo too. Survival is overrun, but your CoG? Why not just give us Horde? Multiplayer was the reason a majority of people bought this game, and it was terrible. There is only 4 maps for it, that doesn't get boring soon does it? The DLC was OK. Gears of War 3 is better in every single aspect of the Game. Why do you think Cliffy B and Rod left Epic huh? This game isn't worth the box it sits in collecting dust.
+--------------------------------------------------------------------------------
+
+Sample 6:
+This is a game that should not have arrived to America, Typical Japanese game, strangely acted, spoken and everything else. Only Otaku and blind fans of the old Squaresoft or Enix can possibly like this game. I gave my best to try and like it, but the strange gameplay, strange story, strange "acting" simply puts any western person off. Maybe if i had spent more than the couple of hours i dedicated to it i could have liked it, and that is a big maybe, and no game nor any entertainment should be like that. Great graphics and interesting world and characters, but everything else represent what is going wrong with Japanese games specially of late, specially from Square-Enix.
+--------------------------------------------------------------------------------
+
+Sample 7:
+This game is a plague on its competitive community threw design and how it treats us
+--------------------------------------------------------------------------------
+
+Sample 8:
+No idea why people are praising this game. This story is not bad. Actually it is good. But this is the only bright part in this game. The graphics are from 2010. It's not just old and outdated, it has a bad direction. Looking at this game makes me feel depressed. The idea to make costumes of 60s-70s is great, but implemented poorly. I just don't like the way this game looks. Music is ok. Nothing more, nothing less. The Gameplay is what I don't get. It is 95% a copy of other SMT and Persona games. To play the same game for decades is just frustrating. Basically you play the same game over and over with just a different story. There is nothing new. I played almost all Personas and SMT games. They were great for their time, but doing the same thing over and over again is a stagnation. Didn't enjoy the game at all.
+--------------------------------------------------------------------------------
+
+Sample 9:
+To be honest, i had hopes. But you successfully destroyed them. I was so excited for the relaese of the game. I built my first squad and get in to div rivals match. Boom, servers are worse then last year and its the first week of the game. Then i decided to give a shot for carreer mode, boom non updated squads and champions league gropus, its been month that the transfer window is closed and groups are drawn. Wow ea you made it again
+--------------------------------------------------------------------------------
+
+Sample 10:
+After seeing Anthem presented at E3, I was sold. Bought the digital version. Played three missions without excitement and noticed that I had encountered a situation where suddenly I couldn't carry on with storyline. Well I decided to end my storyline with Anthem and deleted the game. First time I even would want a refund of this gaming experience. So many expectations and promises not fulfilled.
+--------------------------------------------------------------------------------
+
+
+================================================================================
+CATEGORY: MIXED
+================================================================================
+
+Top 30 most common words:
+ 1. game                 - 66,252 times
+ 2. like                 - 17,645 times
+ 3. there                - 14,614 times
+ 4. good                 - 13,582 times
+ 5. story                - 13,153 times
+ 6. from                 - 11,181 times
+ 7. really               - 10,782 times
+ 8. one                  - 10,176 times
+ 9. fun                  -  9,876 times
+10. games                -  9,396 times
+11. play                 -  9,299 times
+12. get                  -  9,037 times
+13. time                 -  8,868 times
+14. much                 -  8,239 times
+15. out                  -  8,016 times
+16. even                 -  7,918 times
+17. gameplay             -  7,527 times
+18. great                -  7,356 times
+19. about                -  6,996 times
+20. first                -  6,696 times
+21. also                 -  6,625 times
+22. because              -  6,391 times
+23. still                -  6,137 times
+24. well                 -  5,913 times
+25. bad                  -  5,799 times
+26. graphics             -  5,556 times
+27. better               -  5,443 times
+28. new                  -  5,420 times
+29. feel                 -  5,283 times
+30. way                  -  5,165 times
+
+
+Sample reviews (mixed):
+--------------------------------------------------------------------------------
+
+Sample 1:
+My first halo game, also my second game on XBOX. I used this game to practice my aiming skill using a controller other than keyboard+mouse. Beat the campaign, I think 5 times and didn't pay any attention to the story since I never played the first two games. TBH, i found Master Chief the least interesting character in this game.
+--------------------------------------------------------------------------------
+
+Sample 2:
+This is most overvalued game about Spider-man because. Not a best combat in spider-man games we knew "Spiderman web of shadows" player will have a most worked combat. Not a most worked open world, in the "Spider-man 2 the game" player will can find a open doors in the bar's, shop's and more. Not a best web swing without "bullet fly" and crawling on web. But in this game we have a lots of costumes no we have a very COOL costumes and very good picture.
+--------------------------------------------------------------------------------
+
+Sample 3:
+So much fun to play. Played this as a kid and loved every bit of it. The motion controls were iffy at times, but the maps were perfect. Pure party game fun, until I get hit by a blue shell. Then it is a fight on sight.
+--------------------------------------------------------------------------------
+
+Sample 4:
+NOTE! I am not reviewing this DLC with my opinions on DLC considered I am only reviewing it on it's actual quality. Revolution gives us two good multiplayer maps with the rest being fairly average and an excellent return to form for Zombies. Also for the first time we get a new weapon (Which I recall they said they would never do) the Peacekeeper. It could be considered OP with the range of an Assault Rifle but it has the range and recoil of a SMG so it kinda balances out. Also we get a shallow mode in which you can play as a Zombie (Another thing they said that they would never do) and have to hunt down a human and if you kill the human you become it, ultimately though it's nothing special. So yeah this DLC just gets a recommendation especially if you were a Zombies fan and were't satisfied by Tranzit (Transit).
+--------------------------------------------------------------------------------
+
+Sample 5:
+I would have preferred a "tell me a story" mode for this game, as I'm not very good at aiming with a controller, especially while being flung around on a rail in various directions. The story was great. The gameplay, **** so much. I don't really dig having to mow through fields of mobs and burn down Patriots for 5 minutes each. I think the 10s this game has been given are a bit affected by the popularity of the game itself.
+--------------------------------------------------------------------------------
+
+Sample 6:
+I bought this game in high anticipation from the Arkham Asylum, and got very annoyed that it got pushed back by a month, but hey, the wait was worth it (ish) as I think the gameplay and story was excellent, very engaging and it does carry on from Arkham Asylum, but you do not have to have played Arkham Asylum to understand what's going on. The gameplay also was very similar to Arkham Asylum, the usual, hit with left mouse click, reversal with right click at the right time, etc. There are more tools and toys to play around with, which makes the game have a slight versatility to the game. I had to stop and think 1 or 2 times to figure out what to do, which is far from a bad thing. Now, my favourite addition, Playing Catwoman, She is a great addition to the game and i found playing her more fun than playing Batman, and I liked that they had different storylines but cleverly entwined at parts with the main storyline to make sense. As for technical problems, I had none at all. I have a laptop that is 1-2 years old that has 4GB RAM and a Nvidia Geforce 240M with 1GB memory. And everything ran smoothly on all settings medium, and the graphics where still very, very impressive. I did not get the game through Steam, but I did not have one single problem or hitch with installing or registering it. And as for the Bugs, I found none, except his cloak went weird a couple of times that is it. Now, we come to the criticisms, It was very, very short, i installed it one evening and the started playing it that evening and I realised by 10-11pm with an hour break, that i nearly had completed it already, So I went to sleep and woke up, 2 more hours and there, the main story was finished, just like that. I was bitterly disappointed as I was having so much fun, and they do leave you with stuff to do after but nothing major or compelling. The game didn't make me think enough, it was very easy to work things out, and if you dont figure it out for a while, the game gives you "hints", but they aren't small "hints", they SHOW you HOW to do it with a small video clip, I personally don't like that, you should HAVE to work it out, it's really not that mind-taxing. And there is no really hard bosses, like in Arkham Asylum, the Scarecrow encounters where not hard to work out but to execute was a bit of trial and error and it wasnt quick and easy. The side-quests/missions, they were boring, very simple. Go here, destroy this, go here, get that. Very monotonous and I'd rather of had them spend their time enhancing and lengthening the main storyline instead of messing about with pathetic side quests. Overall, a very good game, and my main criticism is that it is very short, Arkham Asylum, i got 24hours Play Time from that and that was with mostly the main storyline, with Arkham City, I got a mere 10 hours before I had "other modes" and "challenge maps". But a very good game nonetheless and a 7/10 from me.
+--------------------------------------------------------------------------------
+
+Sample 7:
+Not a true remaster, but still fun to play for a weekend or two. There are different event types for cops and racers-this can be fun at first, but can become repetitive. Multiplayer offers a fun experience in playing with others, but suffers from empty matchmaking for certain modes.
+--------------------------------------------------------------------------------
+
+Sample 8:
+I have not played any of the older Silent Hill games yet which I have heard are better but this game is one of the scariest games I have ever played. Mostly due to the music/ sound effects that make the cloudy streets in this game 3x as creepy. I like some things about the game but other things like lack of ammo are annoying. Also the bosses are kind of hard to beat and I dont believe there was a difficulty option. If you have the money, Silent Hill HD collection is a rerelease of SH 3 and 4 I think and is the best option to get for **** if you can get this game for 5 bucks like I did and you are into survival horror I would recommend buying this game.
+--------------------------------------------------------------------------------
+
+Sample 9:
+Back In The Grove is a slow moving PC remake that is true to the original slow moving Sega Genesis console game. Probably not worthwhile unless you're nostalgic for 90s Sega properties. The closing credits were novel and better than most of the regular gameplay.
+--------------------------------------------------------------------------------
+
+Sample 10:
+First of all, I would like to point out that this game is top-notch, and I am not giving this game a low score because of gameplay. I am just dissapointed that the game is not running smoothly on my more-than-capable computer. Constant lag spikes make this game almost unplayable. I'm hoping for an update that boosts the performance, but until then I'll be without a great game.
+--------------------------------------------------------------------------------
