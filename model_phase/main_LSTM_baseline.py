@@ -608,12 +608,14 @@ def main(dataset_name,
     
     # Evaluate on validation set
     val_results = evaluate_classifier(
-        model, val_data['text'], val_data['label'], "Validation"
+        model, val_data['text'], val_data['label'], "Validation",
+        output_dir=output_dir
     )
     
     # Evaluate on test set
     test_results = evaluate_classifier(
-        model, test_data['text'], test_data['label'], "Test"
+        model, test_data['text'], test_data['label'], "Test",
+        output_dir=output_dir
     )
     
     # Compile all results
@@ -662,7 +664,7 @@ def main(dataset_name,
         upload_results_to_hf(
             results=all_results,
             output_dir=output_dir,
-            model_name="lstm_baseline",
+            model_name="wm-grsa-lstm-baseline",
             hf_repo_name=hf_repo
         )
     

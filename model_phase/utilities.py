@@ -83,15 +83,51 @@ def load_dataset_from_hf(dataset_name, subset_percentage=1.0):
     return train_data, val_data, test_data
 
 
-def evaluate_classifier(model, texts, labels, split_name="Test"):
+def save_raw_outputs(texts, predictions, labels, output_file, split_name="Test"):
+    """
+    Save raw outputs with datapoints, predicted labels, and true labels.
+    
+    Args:
+        texts: List of text samples
+        predictions: Predicted labels
+        labels: True labels
+        output_file: Path to save the outputs
+        split_name: Name of the split for logging
+    """
+    output_file = Path(output_file)
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+    
+    raw_outputs = []
+    for text, pred, true_label in zip(texts, predictions, labels):
+        raw_outputs.append({
+            'text': text,
+            'predicted_label': str(pred),
+            'true_label': str(true_label),
+            'correct': str(pred) == str(true_label)
+        })
+    
+    # Save as JSON lines
+    with open(output_file, 'w', encoding='utf-8') as f:
+        for entry in raw_outputs:
+            f.write(json.dumps(entry, ensure_ascii=False) + '\n')
+    
+    print(f"\n✓ Raw outputs saved to: {output_file}")
+    print(f"  Total samples: {len(raw_outputs)}")
+    print(f"  Correct: {sum(1 for x in raw_outputs if x['correct'])}")
+    print(f"  Incorrect: {sum(1 for x in raw_outputs if not x['correct'])}")
+
+
+def evaluate_classifier(model, texts, labels, split_name="Test", output_dir=None):
     """
     Evaluate a classifier and return comprehensive metrics.
+    Raw outputs are always saved to output_dir/raw_outputs_{split_name}.jsonl
     
     Args:
         model: Trained classifier with predict() method
         texts: List of text samples
         labels: True labels
         split_name: Name of the split for display (e.g., "Test", "Validation")
+        output_dir: Directory to save raw outputs (required for saving)
         
     Returns:
         Dictionary containing all evaluation metrics
@@ -104,6 +140,12 @@ def evaluate_classifier(model, texts, labels, split_name="Test"):
     start_time = time.time()
     predictions = model.predict(texts)
     inference_time = time.time() - start_time
+    
+    # Always save raw outputs if output_dir is provided
+    if output_dir:
+        output_dir = Path(output_dir)
+        raw_output_file = output_dir / f'raw_outputs_{split_name.lower()}.jsonl'
+        save_raw_outputs(texts, predictions, labels, raw_output_file, split_name)
     
     # Calculate metrics
     accuracy = accuracy_score(labels, predictions)

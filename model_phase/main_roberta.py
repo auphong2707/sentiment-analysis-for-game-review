@@ -513,9 +513,10 @@ class RoBERTaSentimentClassifier:
         return model
 
 
-def evaluate_classifier(model, texts, labels, split_name="Test", use_trainer_predict=True):
+def evaluate_classifier(model, texts, labels, split_name="Test", use_trainer_predict=True, output_dir=None):
     """
     Evaluate a RoBERTa classifier and return comprehensive metrics.
+    Raw outputs are always saved to output_dir/raw_outputs_{split_name}.jsonl
     
     Args:
         model: Trained RoBERTa classifier
@@ -524,18 +525,27 @@ def evaluate_classifier(model, texts, labels, split_name="Test", use_trainer_pre
         split_name: Name of the split for display
         use_trainer_predict: If True, use Trainer.predict() (may log to WandB).
                            If False, use direct model inference (no logging).
+        output_dir: Directory to save raw outputs (required for saving)
         
     Returns:
         Dictionary containing all evaluation metrics
     """
+    from model_phase.utilities import save_raw_outputs
+    
     print(f"\n{'='*60}")
     print(f"Evaluating on {split_name} set")
     print(f"{'='*60}")
     
-    # Predict
+    # Predict once and reuse for both raw outputs and metrics
     start_time = time.time()
     predictions = model.predict(texts, use_trainer=use_trainer_predict)
     inference_time = time.time() - start_time
+    
+    # Always save raw outputs if output_dir is provided
+    if output_dir:
+        output_dir = Path(output_dir)
+        raw_output_file = output_dir / f'raw_outputs_{split_name.lower()}.jsonl'
+        save_raw_outputs(texts, predictions, labels, raw_output_file, split_name)
     
     # Convert string labels to indices for sklearn metrics
     unique_labels = sorted(set(labels) | set(predictions))
@@ -740,7 +750,8 @@ def main(dataset_name,
     use_trainer_predict = not skip_test_eval
     val_results = evaluate_classifier(
         model, val_data['text'], val_data['label'], "Validation",
-        use_trainer_predict=use_trainer_predict
+        use_trainer_predict=use_trainer_predict,
+        output_dir=output_dir
     )
     
     # Log validation results and training time to WandB
@@ -823,7 +834,8 @@ def main(dataset_name,
         # We'll manually log test results to WandB after evaluation
         test_results = evaluate_classifier(
             model, test_data['text'], test_data['label'], "Test",
-            use_trainer_predict=False  # Use direct inference to avoid callback issues
+            use_trainer_predict=False,  # Use direct inference to avoid callback issues
+            output_dir=output_dir
         )
         
         # Log test results to WandB in official mode
@@ -883,7 +895,7 @@ def main(dataset_name,
         upload_results_to_hf(
             results=all_results,
             output_dir=output_dir,
-            model_name="roberta",
+            model_name="wm-grsa-roberta-softmax",
             hf_repo_name=hf_repo
         )
     

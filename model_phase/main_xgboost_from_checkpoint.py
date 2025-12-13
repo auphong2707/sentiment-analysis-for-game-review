@@ -371,16 +371,24 @@ class XGBoostSentimentClassifier:
         print(f"  - {config_file.name}")
 
 
-def evaluate_classifier(model, X, y, split_name="Test", use_wandb=False):
-    """Evaluate classifier and return metrics."""
+def evaluate_classifier(model, X, y, split_name="Test", use_wandb=False, texts=None, output_dir=None):
+    """Evaluate classifier and return metrics. Raw outputs are always saved if output_dir and texts are provided."""
+    from model_phase.utilities import save_raw_outputs
+    
     print(f"\n{'='*60}")
     print(f"Evaluating on {split_name} set")
     print(f"{'='*60}")
     
-    # Predict
+    # Predict once and reuse for both raw outputs and metrics
     start_time = time.time()
     predictions = model.predict(X)
     inference_time = time.time() - start_time
+    
+    # Always save raw outputs if output_dir and texts are provided
+    if output_dir and texts is not None:
+        output_dir = Path(output_dir)
+        raw_output_file = output_dir / f'raw_outputs_{split_name.lower()}.jsonl'
+        save_raw_outputs(texts, predictions, y, raw_output_file, split_name)
     
     # Calculate metrics
     accuracy = accuracy_score(y, predictions)
@@ -747,6 +755,29 @@ def main(checkpoint_dir,
     X_val, y_val = loader.load_embeddings('validation', subset_percentage=subset)
     X_test, y_test = loader.load_embeddings('test', subset_percentage=subset)
     
+    # Load raw texts for raw output saving
+    # Get dataset name from checkpoint metadata or use provided dataset_name
+    checkpoint_dataset_name = loader.state.get('metadata', {}).get('dataset_name')
+    dataset_name_to_use = dataset_name or checkpoint_dataset_name or os.getenv('HF_DATASET_NAME')
+    
+    texts_val = None
+    texts_test = None
+    if dataset_name_to_use:
+        print(f"\n{'='*60}")
+        print("Loading raw texts for output saving")
+        print(f"{'='*60}")
+        try:
+            from model_phase.utilities import load_dataset_from_hf
+            _, val_data_raw, test_data_raw = load_dataset_from_hf(dataset_name_to_use, subset_percentage=subset)
+            texts_val = val_data_raw['text']
+            texts_test = test_data_raw['text']
+            print(f"✓ Loaded {len(texts_val)} validation texts and {len(texts_test)} test texts")
+        except Exception as e:
+            print(f"⚠️  Could not load raw texts: {e}")
+            print("   Raw outputs will not include text content")
+    else:
+        print("\n⚠️  No dataset name available, skipping raw text loading")
+    
     # Initialize model
     print(f"\n{'='*60}")
     print("Initializing XGBoost model")
@@ -778,7 +809,9 @@ def main(checkpoint_dir,
     print(f"{'='*60}")
     val_results = evaluate_classifier(
         model, X_val, y_val, "Validation",
-        use_wandb=wandb_initialized
+        use_wandb=wandb_initialized,
+        texts=texts_val,
+        output_dir=output_dir
     )
     
     # Evaluate on test set (always run - test embeddings are available)
@@ -787,7 +820,9 @@ def main(checkpoint_dir,
     print(f"{'='*60}")
     test_results = evaluate_classifier(
         model, X_test, y_test, "Test",
-        use_wandb=wandb_initialized
+        use_wandb=wandb_initialized,
+        texts=texts_test,
+        output_dir=output_dir
     )
     
     # Compile results
@@ -835,7 +870,7 @@ def main(checkpoint_dir,
             upload_results_to_hf(
                 results=all_results,
                 output_dir=output_dir,
-                model_name="xgboost",
+                model_name="wm-grsa-bge_m3-xgboost",
                 hf_repo_name=hf_repo
             )
         else:
