@@ -84,7 +84,7 @@ class CheckpointLoader:
         print(f"Completed stages: {len(self.state['completed_stages'])}")
         
         # Check required stages
-        required_stages = ['train_embeddings', 'val_embeddings']
+        required_stages = ['train_embeddings', 'validation_embeddings']
         for stage in required_stages:
             if stage not in self.state['completed_stages']:
                 raise ValueError(f"Required stage '{stage}' not found in checkpoint")
