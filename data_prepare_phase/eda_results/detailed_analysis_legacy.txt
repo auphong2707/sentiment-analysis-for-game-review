@@ -1,5 +1,5 @@
 ================================================================================
-DETAILED EDA REPORT - GAME REVIEW SENTIMENT DATASET
+DETAILED EDA REPORT - GAME REVIEW SENTIMENT DATASET (LEGACY)
 ================================================================================
 
 1. BASIC STATISTICS

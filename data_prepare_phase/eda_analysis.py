@@ -224,7 +224,115 @@ plt.savefig(OUTPUT_DIR / '03_common_words_by_category.png', dpi=300, bbox_inches
 print(f"✓ Saved: {OUTPUT_DIR / '03_common_words_by_category.png'}")
 
 # ============================================================================
-# 6. DEEP DIVE INTO MIXED REVIEWS
+# 6. SYSTEMATIC SAMPLE SELECTION FOR REPORT
+# ============================================================================
+def select_representative_samples(category_df, category_name, n_samples=5, n_candidates=100):
+    """
+    Systematically select representative samples from a category.
+    
+    Strategy:
+    1. Random sample large candidate pool (default: 100 candidates)
+    2. Filter outliers (< 10 words or > 300 words)
+    3. For mixed reviews: prioritize those with contrast markers
+    4. Stratify by length (below median, near mean, above 75th percentile)
+    5. Select diverse examples across the length spectrum
+    
+    Args:
+        category_df: DataFrame for the category
+        category_name: Name of category ('positive', 'negative', 'mixed')
+        n_samples: Number of samples to select (default: 5)
+        n_candidates: Number of initial random candidates (default: 100)
+    
+    Returns:
+        DataFrame with selected samples
+    """
+    print(f"\n{'='*80}")
+    print(f"SYSTEMATIC SAMPLE SELECTION: {category_name.upper()}")
+    print(f"{'='*80}")
+    
+    # Step 0: Random sample from category to get candidate pool
+    n_candidates = min(n_candidates, len(category_df))
+    candidate_pool = category_df.sample(n=n_candidates, random_state=42)
+    print(f"Random candidate pool: {n_candidates} reviews")
+    
+    # Step 0: Random sample from category to get candidate pool
+    n_candidates = min(n_candidates, len(category_df))
+    candidate_pool = category_df.sample(n=n_candidates, random_state=42)
+    print(f"Random candidate pool: {n_candidates} reviews")
+    
+    # Step 1: Filter outliers (focus on interquartile range)
+    filtered_df = candidate_pool[
+        (candidate_pool['word_count'] >= 10) & 
+        (candidate_pool['word_count'] <= 300)
+    ].copy()
+    
+    print(f"After filtering outliers (10-300 words): {len(filtered_df)}")
+    
+    # Step 2: For mixed reviews, prioritize contrast markers
+    if category_name == 'mixed':
+        contrast_words = ['but', 'however', 'although', 'though', 'despite', 'unfortunately', 'except']
+        filtered_df['has_contrast'] = filtered_df['review_text'].apply(
+            lambda x: any(word in x.lower() for word in contrast_words)
+        )
+        # Prioritize reviews with contrast markers (79.6% have them)
+        contrast_df = filtered_df[filtered_df['has_contrast']].copy()
+        print(f"Reviews with contrast markers: {len(contrast_df)}")
+        
+        if len(contrast_df) >= n_samples:
+            filtered_df = contrast_df
+    
+    # Check if we have enough samples
+    if len(filtered_df) < n_samples:
+        print(f"Warning: Only {len(filtered_df)} samples available after filtering, requested {n_samples}")
+        n_samples = len(filtered_df)
+    
+    # Step 3: Calculate length statistics
+    median_wc = filtered_df['word_count'].median()
+    mean_wc = filtered_df['word_count'].mean()
+    q75_wc = filtered_df['word_count'].quantile(0.75)
+    
+    print(f"\nLength statistics after filtering:")
+    print(f"  Median word count: {median_wc:.0f}")
+    print(f"  Mean word count: {mean_wc:.0f}")
+    print(f"  75th percentile: {q75_wc:.0f}")
+    
+    # Step 4: Stratified selection by length
+    selected_samples = []
+    
+    # Define length strata
+    strata = [
+        ('short', 0, median_wc, max(1, n_samples // 3)),
+        ('medium', median_wc, q75_wc, max(1, n_samples // 3)),
+        ('long', q75_wc, float('inf'), max(1, n_samples - 2 * (n_samples // 3)))
+    ]
+    
+    print(f"\nStratified sampling:")
+    for stratum_name, lower, upper, n_from_stratum in strata:
+        stratum_df = filtered_df[
+            (filtered_df['word_count'] > lower) & 
+            (filtered_df['word_count'] <= upper)
+        ]
+        
+        if len(stratum_df) > 0:
+            # Random sample from this stratum
+            n_to_sample = min(n_from_stratum, len(stratum_df))
+            samples = stratum_df.sample(n=n_to_sample, random_state=42)
+            selected_samples.append(samples)
+            print(f"  {stratum_name:8s} ({lower:5.0f}-{upper:5.0f} words): selected {n_to_sample} from {len(stratum_df):,} available")
+    
+    # Combine all selected samples
+    if selected_samples:
+        result_df = pd.concat(selected_samples, ignore_index=True)
+        print(f"\nTotal samples selected: {len(result_df)}")
+        print(f"Word count range: {result_df['word_count'].min():.0f}-{result_df['word_count'].max():.0f}")
+        return result_df
+    else:
+        print("\nWarning: No samples met criteria, falling back to random selection")
+        return filtered_df.sample(n=min(n_samples, len(filtered_df)), random_state=42)
+
+
+# ============================================================================
+# 7. DEEP DIVE INTO MIXED REVIEWS
 # ============================================================================
 print("\n[6/6] Deep dive into MIXED reviews...")
 print("\n" + "="*80)
@@ -281,38 +389,60 @@ print(f"Mixed reviews with contrast words: {has_contrast:,}")
 print("\nAverage sentiment indicators per review:")
 print(f"Mixed reviews    - Positive words: {mixed_df_copy['pos_count'].mean():.2f}, Negative words: {mixed_df_copy['neg_count'].mean():.2f}, Contrast words: {mixed_df_copy['contrast_count'].mean():.2f}")
 
-# Sample mixed reviews
+# ============================================================================
+# SYSTEMATIC SAMPLE SELECTION
+# ============================================================================
 print("\n" + "="*80)
-print("SAMPLE MIXED REVIEWS ANALYSIS")
+print("SYSTEMATIC REPRESENTATIVE SAMPLE SELECTION")
 print("="*80)
 
-# Get diverse samples
-sample_mixed = mixed_df.sample(min(15, len(mixed_df)))
+# Select representative samples for each category
+positive_samples = select_representative_samples(positive_df, 'positive', n_samples=5)
+negative_samples = select_representative_samples(negative_df, 'negative', n_samples=5)
+mixed_samples = select_representative_samples(mixed_df, 'mixed', n_samples=5)
 
-for i, (idx, row) in enumerate(sample_mixed.iterrows(), 1):
+print("\n" + "="*80)
+print("SELECTED REPRESENTATIVE SAMPLES")
+print("="*80)
+
+print("\n" + "="*80)
+print("SELECTED REPRESENTATIVE SAMPLES")
+print("="*80)
+
+# Display positive samples
+print(f"\n{'='*80}")
+print("POSITIVE REVIEW SAMPLES")
+print(f"{'='*80}")
+for i, (idx, row) in enumerate(positive_samples.iterrows(), 1):
+    print(f"\nSample {i} - {row['word_count']:.0f} words, {row['text_length']:.0f} characters")
+    print(f"{'-'*80}")
+    print(row['review_text'][:500] + "..." if len(row['review_text']) > 500 else row['review_text'])
+
+# Display negative samples
+print(f"\n\n{'='*80}")
+print("NEGATIVE REVIEW SAMPLES")
+print(f"{'='*80}")
+for i, (idx, row) in enumerate(negative_samples.iterrows(), 1):
+    print(f"\nSample {i} - {row['word_count']:.0f} words, {row['text_length']:.0f} characters")
+    print(f"{'-'*80}")
+    print(row['review_text'][:500] + "..." if len(row['review_text']) > 500 else row['review_text'])
+
+# Display mixed samples with analysis
+print(f"\n\n{'='*80}")
+print("MIXED REVIEW SAMPLES (with contrast analysis)")
+print(f"{'='*80}")
+for i, (idx, row) in enumerate(mixed_samples.iterrows(), 1):
     text = row['review_text']
     pos, neg, contrast = find_contrasting_patterns(text)
     
-    print(f"\n{'-'*80}")
-    print(f"MIXED REVIEW SAMPLE #{i}")
-    print(f"{'-'*80}")
-    print(f"Length: {len(text)} chars, {len(text.split())} words")
+    print(f"\nSample {i} - {row['word_count']:.0f} words, {row['text_length']:.0f} characters")
     print(f"Positive indicators: {pos}, Negative indicators: {neg}, Contrast words: {contrast}")
-    print(f"\nReview text:")
+    print(f"{'-'*80}")
     print(text[:500] + "..." if len(text) > 500 else text)
-    
-    # Try to identify why it's mixed
-    print(f"\n→ Analysis: ", end="")
-    if pos > 0 and neg > 0:
-        print("Contains both positive and negative sentiments")
-    elif contrast > 0:
-        print("Uses contrasting language")
-    else:
-        print("Neutral or balanced tone")
 
-# Compare positive/negative/mixed samples side by side
+# Get random diverse samples for comparison
 print("\n" + "="*80)
-print("COMPARATIVE ANALYSIS: WHY MIXED vs POSITIVE vs NEGATIVE?")
+print("COMPARATIVE ANALYSIS: POSITIVE vs NEGATIVE vs MIXED")
 print("="*80)
 
 for i in range(5):
@@ -360,13 +490,76 @@ with open(OUTPUT_DIR / 'detailed_analysis.txt', 'w', encoding='utf-8') as f:
         f.write(f"Top 30 most common words:\n")
         for i, (word, count) in enumerate(category_analysis[category]['common_words'], 1):
             f.write(f"{i:2d}. {word:20s} - {count:6,} times\n")
-        
-        f.write(f"\n\nSample reviews ({category}):\n")
-        f.write("-"*80 + "\n")
-        for i, review in enumerate(category_analysis[category]['sample_reviews'], 1):
-            f.write(f"\nSample {i}:\n{review}\n")
-            f.write("-"*80 + "\n")
 
+# Save systematically selected samples
+with open(OUTPUT_DIR / 'representative_samples.txt', 'w', encoding='utf-8') as f:
+    f.write("="*80 + "\n")
+    f.write("SYSTEMATICALLY SELECTED REPRESENTATIVE SAMPLES\n")
+    f.write("="*80 + "\n\n")
+    
+    f.write("SELECTION METHODOLOGY:\n")
+    f.write("-"*80 + "\n")
+    f.write("1. Random sampling: 100 reviews randomly selected from each category\n")
+    f.write("2. Statistical filtering: Exclude outliers (< 10 words or > 300 words)\n")
+    f.write("3. For mixed reviews: Prioritize samples with contrast markers\n")
+    f.write("4. Stratified selection: Select samples across length spectrum:\n")
+    f.write("   - Short: below median word count\n")
+    f.write("   - Medium: median to 75th percentile\n")
+    f.write("   - Long: above 75th percentile\n")
+    f.write("5. Final output: 5 representative samples per category\n\n")
+    
+    # Positive samples
+    f.write("="*80 + "\n")
+    f.write("POSITIVE REVIEW SAMPLES\n")
+    f.write("="*80 + "\n\n")
+    for i, (idx, row) in enumerate(positive_samples.iterrows(), 1):
+        f.write(f"Sample {i} - {row['word_count']:.0f} words, {row['text_length']:.0f} characters\n")
+        f.write("-"*80 + "\n")
+        f.write(row['review_text'] + "\n\n")
+    
+    # Negative samples
+    f.write("\n" + "="*80 + "\n")
+    f.write("NEGATIVE REVIEW SAMPLES\n")
+    f.write("="*80 + "\n\n")
+    for i, (idx, row) in enumerate(negative_samples.iterrows(), 1):
+        f.write(f"Sample {i} - {row['word_count']:.0f} words, {row['text_length']:.0f} characters\n")
+        f.write("-"*80 + "\n")
+        f.write(row['review_text'] + "\n\n")
+    
+    # Mixed samples
+    f.write("\n" + "="*80 + "\n")
+    f.write("MIXED REVIEW SAMPLES\n")
+    f.write("="*80 + "\n\n")
+    for i, (idx, row) in enumerate(mixed_samples.iterrows(), 1):
+        text = row['review_text']
+        pos, neg, contrast = find_contrasting_patterns(text)
+        f.write(f"Sample {i} - {row['word_count']:.0f} words, {row['text_length']:.0f} characters\n")
+        f.write(f"Positive indicators: {pos}, Negative indicators: {neg}, Contrast words: {contrast}\n")
+        f.write("-"*80 + "\n")
+        f.write(text + "\n\n")
+
+print(f"✓ Saved representative samples: {OUTPUT_DIR / 'representative_samples.txt'}")
+
+# Save original detailed analysis (keeping legacy samples for reference)
+with open(OUTPUT_DIR / 'detailed_analysis_legacy.txt', 'w', encoding='utf-8') as f:
+    f.write("="*80 + "\n")
+    f.write("DETAILED EDA REPORT - GAME REVIEW SENTIMENT DATASET (LEGACY)\n")
+    f.write("="*80 + "\n\n")
+    
+    f.write("1. BASIC STATISTICS\n")
+    f.write("-"*80 + "\n")
+    f.write(f"Total reviews: {len(df):,}\n")
+    f.write(f"\nCategory distribution:\n{category_counts}\n")
+    f.write(f"\nText length statistics:\n{df[['text_length', 'word_count']].describe()}\n")
+    
+    for category in categories:
+        f.write(f"\n\n{'='*80}\n")
+        f.write(f"CATEGORY: {category.upper()}\n")
+        f.write(f"{'='*80}\n\n")
+        
+        f.write(f"Top 30 most common words:\n")
+        for i, (word, count) in enumerate(category_analysis[category]['common_words'], 1):
+            f.write(f"{i:2d}. {word:20s} - {count:6,} times\n")
 print(f"✓ Saved detailed analysis: {OUTPUT_DIR / 'detailed_analysis.txt'}")
 
 # Save summary statistics to CSV
@@ -386,6 +579,7 @@ print("\nGenerated files:")
 print("  1. 01_basic_distributions.png - Distribution visualizations")
 print("  2. 02_word_clouds.png - Word clouds per category")
 print("  3. 03_common_words_by_category.png - Top words visualization")
-print("  4. detailed_analysis.txt - Comprehensive text report")
-print("  5. summary_statistics.csv - Statistical summary")
+print("  4. representative_samples.txt - Systematically selected samples")
+print("  5. detailed_analysis_legacy.txt - Comprehensive text report (legacy)")
+print("  6. summary_statistics.csv - Statistical summary")
 print("\n" + "="*80)
