@@ -198,25 +198,14 @@ class BilingualEmbeddingGenerator:
         
         # Load bilingual-embedding-base model (frozen for embedding extraction)
         print(f"\nLoading bilingual-embedding-base model: {self.model_name}")
-        # Load tokenizer without trust_remote_code to avoid fetching extra templates
-        try:
-            self.tokenizer = AutoTokenizer.from_pretrained(
-                self.model_name,
-                clean_up_tokenization_spaces=True,
-                use_fast=True,
-                trust_remote_code=False  # Avoid fetching extra templates that may not exist
-            )
-        except Exception as e:
-            print(f"  Warning: Failed to load tokenizer with trust_remote_code=False: {e}")
-            print(f"  Retrying with trust_remote_code=True...")
-            self.tokenizer = AutoTokenizer.from_pretrained(
-                self.model_name,
-                clean_up_tokenization_spaces=True,
-                use_fast=True,
-                trust_remote_code=True
-            )
-        
-        self.embedding_model = AutoModel.from_pretrained(self.model_name, trust_remote_code=False)
+        # Use local_files_only=False to allow download, but don't check for optional features
+        self.tokenizer = AutoTokenizer.from_pretrained(
+            self.model_name,
+            clean_up_tokenization_spaces=True,
+            use_fast=True,
+            trust_remote_code=True
+        )
+        self.embedding_model = AutoModel.from_pretrained(self.model_name, trust_remote_code=True)
         self.embedding_model.to(self.device)
         self.embedding_model.eval()  # Freeze embedding model
         
