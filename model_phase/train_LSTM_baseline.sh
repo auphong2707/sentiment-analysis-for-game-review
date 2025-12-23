@@ -28,6 +28,7 @@ DATASET="${HF_DATASET_NAME:-}"
 GRIDSEARCH_SUBSET=0.1
 FINAL_SUBSET=1.0
 OUTPUT_BASE_DIR="model_phase/results"
+USE_WANDB=true
 N_JOBS=""
 SKIP_GRIDSEARCH=false
 
@@ -49,6 +50,14 @@ while [[ $# -gt 0 ]]; do
         --output_dir)
             OUTPUT_BASE_DIR="$2"
             shift 2
+            ;;
+        --use_wandb)
+            USE_WANDB=true
+            shift
+            ;;
+        --no_wandb)
+            USE_WANDB=false
+            shift
             ;;
         --n_jobs)
             N_JOBS="$2"
@@ -89,6 +98,7 @@ echo "Dataset: $DATASET"
 echo "Grid Search Subset: $GRIDSEARCH_SUBSET"
 echo "Final Training Subset: $FINAL_SUBSET"
 echo "Output Directory: $OUTPUT_BASE_DIR"
+echo "WandB Logging: $USE_WANDB"
 if [ -n "$N_JOBS" ]; then
     echo "CPU Cores: $N_JOBS"
 fi
@@ -153,6 +163,11 @@ if [ "$SKIP_GRIDSEARCH" = false ]; then
             --subset $GRIDSEARCH_SUBSET \
             --output_dir $OUTPUT_DIR \
             --no_upload"
+                
+                # Add wandb if enabled
+                if [ "$USE_WANDB" = true ]; then
+                    CMD="$CMD --use_wandb"
+                fi
                 
                 # Add n_jobs if specified
                 if [ -n "$N_JOBS" ]; then
@@ -284,6 +299,11 @@ FINAL_CMD="python model_phase/main_LSTM_baseline.py \
 # Add n_jobs parameter if specified
 if [ -n "$N_JOBS" ]; then
     FINAL_CMD="$FINAL_CMD --n_jobs $N_JOBS"
+fi
+
+# Add wandb if enabled
+if [ "$USE_WANDB" = true ]; then
+    FINAL_CMD="$FINAL_CMD --use_wandb"
 fi
 
 echo "Running: $FINAL_CMD"

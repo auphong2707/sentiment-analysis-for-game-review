@@ -127,13 +127,15 @@ bash model_phase/train_LSTM_baseline.sh \
     --dataset username/game-reviews-sentiment \
     --gridsearch_subset 0.1 \
     --final_subset 1.0 \
-    --n_jobs 4
+    --n_jobs 4 \
+    --use_wandb
 ```
 
 **Options:**
 - `--dataset` - HuggingFace dataset (required)
 - `--gridsearch_subset` - Grid search fraction (default: 0.1)
 - `--final_subset` - Final training fraction (default: 1.0)
+- `--use_wandb` / `--no_wandb` - Toggle W&B (default: enabled)
 - `--n_jobs` - CPU cores
 - `--skip_gridsearch` - Skip grid search
 - `--eval_steps` - Steps between evaluations (default: 500)
