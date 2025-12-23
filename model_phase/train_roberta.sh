@@ -121,6 +121,7 @@ if [ "$SKIP_GRIDSEARCH" = false ]; then
     echo "STEP 1/3: Running Grid Search"
     echo "============================================================"
     echo "Finding best hyperparameters on $GRIDSEARCH_SUBSET subset..."
+    echo "Selection metric: F1-Macro (balanced performance across all classes)"
     echo ""
     
     GRIDSEARCH_DIR="$OUTPUT_BASE_DIR/gridsearch"
@@ -198,7 +199,7 @@ if [ "$SKIP_GRIDSEARCH" = false ]; then
                     
                     echo ""
                     echo "Results:"
-                    echo "  Validation F1: $VAL_F1"
+                    echo "  Validation F1-Macro: $VAL_F1"
                     echo "  Validation Accuracy: $VAL_ACC"
                     echo "  Training Time: ${TRAIN_TIME}s"
                     echo ""
@@ -206,7 +207,7 @@ if [ "$SKIP_GRIDSEARCH" = false ]; then
                     # Log to results file
                     echo "Configuration $CURRENT:" >> "$RESULTS_FILE"
                     echo "  Learning Rate: $LR_VALUE" >> "$RESULTS_FILE"
-                    echo "  Validation F1: $VAL_F1" >> "$RESULTS_FILE"
+                    echo "  Validation F1-Macro: $VAL_F1" >> "$RESULTS_FILE"
                     echo "  Validation Accuracy: $VAL_ACC" >> "$RESULTS_FILE"
                     echo "  Training Time: ${TRAIN_TIME}s" >> "$RESULTS_FILE"
                     echo "  Output: $OUTPUT_DIR" >> "$RESULTS_FILE"
@@ -235,10 +236,10 @@ if [ "$SKIP_GRIDSEARCH" = false ]; then
     
     # Save best config summary
     BEST_CONFIG_FILE="$GRIDSEARCH_DIR/best_config.txt"
-    echo "Best Configuration Found" > "$BEST_CONFIG_FILE"
+    echo "Best Configuration Found (F1-Macro)" > "$BEST_CONFIG_FILE"
     echo "======================" >> "$BEST_CONFIG_FILE"
     echo "Configuration: $BEST_CONFIG" >> "$BEST_CONFIG_FILE"
-    echo "Validation F1: $BEST_F1" >> "$BEST_CONFIG_FILE"
+    echo "Validation F1-Macro: $BEST_F1" >> "$BEST_CONFIG_FILE"
     echo "Model Directory: $BEST_OUTPUT_DIR" >> "$BEST_CONFIG_FILE"
     
     echo "All results saved to: $RESULTS_FILE"
@@ -334,7 +335,7 @@ echo "PIPELINE COMPLETE!"
 echo "============================================================"
 echo ""
 echo "Summary:"
-echo "1. ✓ Grid search found best hyperparameters"
+echo "1. ✓ Grid search found best hyperparameters (optimized for F1-Macro)"
 echo "2. ✓ Final model trained with optimal configuration"
 echo "3. ✓ Results uploaded to HuggingFace Hub"
 echo ""

@@ -127,6 +127,7 @@ if [ "$SKIP_GRIDSEARCH" = false ]; then
     echo "STEP 1/3: Running Grid Search on 10% Data"
     echo "============================================================"
     echo "Finding best hyperparameters..."
+    echo "Selection metric: F1-Macro (balanced performance across all classes)"
     echo ""
     
     GRIDSEARCH_DIR="$OUTPUT_BASE_DIR/gridsearch_xgboost"

@@ -150,7 +150,7 @@ def evaluate_classifier(model, texts, labels, split_name="Test", output_dir=None
     # Calculate metrics
     accuracy = accuracy_score(labels, predictions)
     precision, recall, f1, support = precision_recall_fscore_support(
-        labels, predictions, average='weighted', zero_division=0
+        labels, predictions, average='macro', zero_division=0
     )
     
     # Per-class metrics
@@ -164,9 +164,9 @@ def evaluate_classifier(model, texts, labels, split_name="Test", output_dir=None
     # Print results
     print(f"\n{split_name} Results:")
     print(f"  Accuracy: {accuracy:.4f}")
-    print(f"  Precision (weighted): {precision:.4f}")
-    print(f"  Recall (weighted): {recall:.4f}")
-    print(f"  F1-score (weighted): {f1:.4f}")
+    print(f"  Precision (macro): {precision:.4f}")
+    print(f"  Recall (macro): {recall:.4f}")
+    print(f"  F1-score (macro): {f1:.4f}")
     print(f"  Inference time: {inference_time:.2f}s")
     print(f"  Samples/second: {len(texts)/inference_time:.2f}")
     
@@ -278,6 +278,7 @@ def find_latest_checkpoint(checkpoint_dir):
 def init_wandb_if_available(project_name, experiment_name, config, use_wandb=False):
     """
     Initialize WandB if available and requested.
+    Uses WANDB_API_KEY from environment for authentication.
     
     Args:
         project_name: WandB project name
@@ -293,6 +294,18 @@ def init_wandb_if_available(project_name, experiment_name, config, use_wandb=Fal
     
     try:
         import wandb
+        import os
+        
+        # Get API key from environment
+        api_key = os.getenv('WANDB_API_KEY')
+        if api_key:
+            wandb.login(key=api_key)
+            print("✓ WandB authenticated using WANDB_API_KEY")
+        else:
+            print("⚠️  WANDB_API_KEY not found in environment. Set it in .env file.")
+            print("   You can find your API key at: https://wandb.ai/authorize")
+            return False
+        
         wandb.init(
             project=project_name,
             name=experiment_name,

@@ -230,7 +230,7 @@ class RoBERTaSentimentClassifier:
         # Calculate metrics
         accuracy = accuracy_score(labels, predictions)
         precision, recall, f1, _ = precision_recall_fscore_support(
-            labels, predictions, average='weighted', zero_division=0
+            labels, predictions, average='macro', zero_division=0
         )
         
         return {

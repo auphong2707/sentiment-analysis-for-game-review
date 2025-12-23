@@ -38,7 +38,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
 from sklearn.preprocessing import LabelEncoder
-from sklearn.metrics import f1_score, precision_score, recall_score, classification_report
+from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score, classification_report
 from tqdm import tqdm
 
 # Import utilities
@@ -236,13 +236,16 @@ class LSTMSentimentClassifier:
         
         print(f"✓ LSTM Classifier initialized (device: {self.device})")
         
-    def fit(self, texts, labels):
+    def fit(self, texts, labels, val_texts=None, val_labels=None, use_wandb=False):
         """
         Train the LSTM model on text data.
         
         Args:
             texts: List of review texts
             labels: List of sentiment labels
+            val_texts: Optional list of validation review texts
+            val_labels: Optional list of validation sentiment labels
+            use_wandb: Whether to log metrics to wandb
         """
         print("\n[1/4] Encoding labels...")
         y_encoded = self.label_encoder.fit_transform(labels)
@@ -261,6 +264,13 @@ class LSTMSentimentClassifier:
         print(f"  - Dataset size: {len(dataset)}")
         print(f"  - Batch size: {self.batch_size}")
         print(f"  - Number of batches: {len(dataloader)}")
+        
+        # Create validation dataloader if validation data provided
+        val_dataloader = None
+        if val_texts is not None and val_labels is not None:
+            val_dataset = TextDataset(val_texts, val_labels, self.tokenizer, self.label_encoder, self.max_len)
+            val_dataloader = DataLoader(val_dataset, batch_size=self.batch_size, shuffle=False)
+            print(f"  - Validation dataset size: {len(val_dataset)}")
         
         print(f"\n[4/4] Training LSTM model...")
         print(f"  - Vocab size: {vocab_size}")
@@ -292,8 +302,12 @@ class LSTMSentimentClassifier:
             criterion = nn.NLLLoss() 
             print(f"  - Using Negative Log Likelihood Loss for {num_classes}-class classification")
         
-        # Training loop
+        # Import wandb utilities
+        from model_phase.utilities import log_to_wandb
+        
+        # Training loop with validation
         for epoch in range(1, self.epochs + 1):
+            # Training phase
             total_loss = 0
             self.model.train()
             
@@ -321,8 +335,64 @@ class LSTMSentimentClassifier:
                 total_loss += loss.item()
                 progress_bar.set_postfix({'loss': f'{loss.item():.4f}'})
             
-            avg_loss = total_loss / len(dataloader)
-            print(f"  Epoch {epoch}: Average Loss = {avg_loss:.4f}")
+            avg_train_loss = total_loss / len(dataloader)
+            
+            # Validation phase
+            val_loss = None
+            val_acc = None
+            val_f1 = None
+            if val_dataloader is not None:
+                self.model.eval()
+                val_total_loss = 0
+                val_predictions = []
+                val_targets = []
+                
+                with torch.no_grad():
+                    for inputs, targets in val_dataloader:
+                        inputs = inputs.to(self.device)
+                        targets = targets.to(self.device)
+                        
+                        outputs = self.model(inputs)
+                        
+                        if num_classes == 2:
+                            targets_loss = targets.float().clamp(0, 1).unsqueeze(1)
+                            loss = criterion(outputs, targets_loss)
+                            # Get predictions
+                            probs = torch.sigmoid(outputs).squeeze()
+                            preds = (probs > 0.5).cpu().numpy()
+                        else:
+                            targets_loss = targets.long().clamp(0, num_classes - 1)
+                            loss = criterion(outputs, targets_loss)
+                            # Get predictions
+                            preds = outputs.argmax(dim=1).cpu().numpy()
+                        
+                        val_total_loss += loss.item()
+                        val_predictions.extend(preds)
+                        val_targets.extend(targets.cpu().numpy())
+                
+                val_loss = val_total_loss / len(val_dataloader)
+                val_acc = accuracy_score(val_targets, val_predictions)
+                val_f1 = f1_score(val_targets, val_predictions, average='macro', zero_division=0)
+            
+            # Print epoch summary
+            if val_loss is not None:
+                print(f"  Epoch {epoch}: Train Loss = {avg_train_loss:.4f}, Val Loss = {val_loss:.4f}, Val Acc = {val_acc:.4f}, Val F1 = {val_f1:.4f}")
+            else:
+                print(f"  Epoch {epoch}: Train Loss = {avg_train_loss:.4f}")
+            
+            # Log to wandb
+            if use_wandb:
+                metrics = {
+                    'epoch': epoch,
+                    'train_loss': avg_train_loss,
+                }
+                if val_loss is not None:
+                    metrics.update({
+                        'val_loss': val_loss,
+                        'val_accuracy': val_acc,
+                        'val_f1': val_f1
+                    })
+                log_to_wandb(metrics, use_wandb=True)
         
         self.is_fitted = True
         print("✓ Training complete!")
@@ -601,7 +671,13 @@ def main(dataset_name,
     print("Training model")
     print(f"{'='*60}")
     train_start = time.time()
-    model.fit(train_data['text'], train_data['label'])
+    model.fit(
+        train_data['text'], 
+        train_data['label'],
+        val_texts=val_data['text'],
+        val_labels=val_data['label'],
+        use_wandb=wandb_initialized
+    )
     train_time = time.time() - train_start
     
     print(f"\n✓ Training completed in {train_time:.2f}s")
