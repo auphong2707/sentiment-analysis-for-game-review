@@ -6,7 +6,7 @@
 set -e  # Exit on error
 
 # bilingual-embedding-base parameters (constants)
-readonly MAX_LENGTH=512
+readonly MAX_LENGTH=256
 readonly BATCH_SIZE=256
 
 # Load dataset from .env if available
@@ -61,7 +61,7 @@ while [[ $# -gt 0 ]]; do
             echo "  --subset FRACTION          Fraction of data to use (default: 1.0)"
             echo "  --output_dir DIR           Output directory (default: model_phase/results)"
             echo "  --batch_size SIZE          Batch size (default: 64)"
-            echo "  --max_length LENGTH        Max sequence length (default: 512)"
+            echo "  --max_length LENGTH        Max sequence length (default: 256, ~4x faster than 512)"
             echo "  --use_wandb                Enable WandB logging"
             echo "  --experiment_name NAME     Custom experiment name"
             exit 1

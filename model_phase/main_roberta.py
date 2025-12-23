@@ -90,7 +90,7 @@ MODEL_NAME = 'FacebookAI/roberta-base'
 class GameReviewDataset(Dataset):
     """PyTorch Dataset for game reviews."""
     
-    def __init__(self, texts, labels, tokenizer, max_length=512, label2id=None):
+    def __init__(self, texts, labels, tokenizer, max_length=256, label2id=None):
         self.texts = texts
         self.labels = labels
         self.tokenizer = tokenizer
@@ -153,7 +153,7 @@ class RoBERTaSentimentClassifier:
     
     def __init__(self, 
                  num_labels=3,
-                 max_length=512,
+                 max_length=256,
                  batch_size=16,
                  learning_rate=2e-5,
                  num_epochs=5,
@@ -613,7 +613,7 @@ def evaluate_classifier(model, texts, labels, split_name="Test", use_trainer_pre
 
 
 def main(dataset_name,
-         max_length=512,
+         max_length=256,
          batch_size=16,
          learning_rate=2e-5,
          num_epochs=5,

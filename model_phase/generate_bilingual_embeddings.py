@@ -163,7 +163,7 @@ class BilingualEmbeddingGenerator:
     """Generate bilingual-embedding-base embeddings with checkpoint support."""
     
     def __init__(self, 
-                 max_length=512,
+                 max_length=256,
                  batch_size=256,
                  checkpoint_manager=None):
         self.model_name = MODEL_NAME
@@ -256,7 +256,29 @@ class BilingualEmbeddingGenerator:
             print(f"  Total samples: {len(texts)}")
             print(f"  Batch size: {self.batch_size}")
             print(f"  Max length: {self.max_length}")
-            print(f"\n  ⚡ Performance tip: If speed is critical, reduce --max_length")
+            
+            # Analyze actual text lengths to show wasted computation
+            print(f"\n  📊 Analyzing text lengths (sampling 1000 texts)...")
+            sample_size = min(1000, len(texts))
+            sample_texts = texts[:sample_size]
+            sample_tokens = [len(self.tokenizer.encode(text, add_special_tokens=True)) for text in sample_texts]
+            avg_tokens = np.mean(sample_tokens)
+            median_tokens = np.median(sample_tokens)
+            p95_tokens = np.percentile(sample_tokens, 95)
+            max_tokens = np.max(sample_tokens)
+            
+            print(f"     Average: {avg_tokens:.0f} tokens | Median: {median_tokens:.0f} | 95th percentile: {p95_tokens:.0f} | Max: {max_tokens:.0f}")
+            wasted_compute = (self.max_length - avg_tokens) / self.max_length * 100
+            print(f"     Wasted computation: {wasted_compute:.1f}% (padding to {self.max_length})")
+            
+            # Suggest optimal max_length
+            suggested_max_length = int(np.ceil(p95_tokens / 64) * 64)  # Round up to nearest 64
+            if suggested_max_length < self.max_length:
+                speedup = (self.max_length / suggested_max_length) ** 2  # Quadratic attention
+                print(f"\n  💡 RECOMMENDATION: Use --max_length {suggested_max_length} for {speedup:.1f}x speedup!")
+                print(f"     This covers 95% of texts and reduces wasted computation to ~{(suggested_max_length - avg_tokens) / suggested_max_length * 100:.1f}%")
+            
+            print(f"\n  ⚡ Performance tip: Reduce --max_length for massive speedup")
             print(f"     Attention is O(n²): 512→256 gives ~4x speedup, 512→128 gives ~16x speedup")
         
         start_time = time.time()
@@ -442,7 +464,7 @@ class BilingualEmbeddingGenerator:
 
 
 def main(dataset_name,
-         max_length=512,
+         max_length=256,
          batch_size=32,
          subset=1.0,
          output_dir=None,
@@ -630,8 +652,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Generate bilingual-embedding-base embeddings with checkpoint support')
     parser.add_argument('--dataset', type=str, default=os.getenv('HF_DATASET_NAME'),
                         help='HuggingFace dataset name')
-    parser.add_argument('--max_length', type=int, default=512,
-                        help='Maximum sequence length')
+    parser.add_argument('--max_length', type=int, default=256,
+                        help='Maximum sequence length (256 = 4x faster than 512, covers 95%+ of texts)')
     parser.add_argument('--batch_size', type=int, default=256,
                         help='Batch size for embedding generation')
     parser.add_argument('--subset', type=float, default=1.0,
