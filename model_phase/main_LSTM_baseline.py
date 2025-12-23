@@ -397,11 +397,10 @@ class LSTMSentimentClassifier:
                     # Log to wandb
                     if use_wandb:
                         log_to_wandb({
-                            'step': global_step,
-                            'epoch': epoch,
-                            'val_loss': val_loss_avg,
-                            'val_accuracy': val_acc,
-                            'val_f1': val_f1
+                            'val/loss': val_loss_avg,
+                            'val/accuracy': val_acc,
+                            'val/f1': val_f1,
+                            'global_step': global_step,
                         }, use_wandb=True)
                     
                     # Save checkpoint if this is the best model so far
@@ -446,8 +445,8 @@ class LSTMSentimentClassifier:
             # Log epoch metrics to wandb
             if use_wandb:
                 log_to_wandb({
-                    'epoch': epoch,
-                    'train_loss': avg_train_loss,
+                    'train/loss_epoch_avg': avg_train_loss,
+                    'global_step': global_step,
                 }, use_wandb=True)
         
         # Load best checkpoint if available
