@@ -121,7 +121,7 @@ class CheckpointManager:
         all_stages = [
             'data_loaded',
             'train_embeddings',
-            'val_embeddings',
+            'validation_embeddings',
             'test_embeddings'
         ]
         
@@ -424,7 +424,7 @@ class BilingualEmbeddingGenerator:
         
         # Generate validation embeddings
         X_val = self.generate_embeddings_with_checkpoint(
-            val_data['text'], val_data['label'], 'val_embeddings', "Validation"
+            val_data['text'], val_data['label'], 'validation_embeddings', "Validation"
         )
         
         # Generate test embeddings
