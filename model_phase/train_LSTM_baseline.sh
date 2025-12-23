@@ -150,9 +150,9 @@ if [ "$SKIP_GRIDSEARCH" = false ]; then
         # Create unique output directory
         OUTPUT_DIR="$GRIDSEARCH_DIR/config_${CURRENT}_lr${LEARNING_RATE}"
         
-        # Use 10x smaller eval/save steps for 10% data subset
-        GRIDSEARCH_EVAL_STEPS=$((EVAL_STEPS / 10))
-        GRIDSEARCH_SAVE_STEPS=$((SAVE_STEPS / 10))
+        # Use 2x smaller eval/save steps for 10% data subset (half of official steps)
+        GRIDSEARCH_EVAL_STEPS=$((EVAL_STEPS / 2))
+        GRIDSEARCH_SAVE_STEPS=$((SAVE_STEPS / 2))
         
         # Build command (no HuggingFace upload during grid search)
         CMD="python model_phase/main_LSTM_baseline.py \
