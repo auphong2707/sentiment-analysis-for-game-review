@@ -153,13 +153,14 @@ bash model_phase/train_LSTM_baseline.sh \
 
 All scripts save results to `model_phase/results/` with auto-upload to HuggingFace Hub.
 
-**bilingual-embedding-base Embeddings:**
+**EmbeddingGemma-300m Embeddings:**
 ```
-results/bilingual_embeddings/checkpoints/
+results/gemma_embeddings_YYYYMMDD_HHMMSS/checkpoints/
 ├── checkpoint_state.json
 ├── train_embeddings_embeddings.npz
 ├── validation_embeddings_embeddings.npz
-└── test_embeddings_embeddings.npz
+├── test_embeddings_embeddings.npz
+└── embedding_metadata.json
 ```
 
 **XGBoost:**

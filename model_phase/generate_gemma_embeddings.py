@@ -377,12 +377,13 @@ def main(dataset_name,
     print("EmbeddingGemma-300m Embedding Generation with Checkpoint Support")
     print("="*60)
     
-    # Setup output directory
+    # Setup output directory (backward compatible with previous embeddings)
     if output_dir is None:
         if experiment_name:
             output_dir = f'model_phase/results/{experiment_name}'
         else:
-            output_dir = f'model_phase/results/gemma_embeddings_{datetime.now().strftime("%Y%m%d_%H%M%S")}'
+            # Use fixed directory name for backward compatibility
+            output_dir = 'model_phase/results/embeddings'
     
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
