@@ -209,6 +209,17 @@ class BilingualEmbeddingGenerator:
         self.embedding_model.to(self.device)
         self.embedding_model.eval()  # Freeze embedding model
         
+        # Optimize with torch.compile for 20-30% speedup (PyTorch 2.0+)
+        if hasattr(torch, 'compile'):
+            try:
+                print("  Optimizing model with torch.compile...")
+                self.embedding_model = torch.compile(self.embedding_model, mode='max-autotune')
+                print("  ✓ torch.compile enabled (expect 20-30% speedup after warmup)")
+            except Exception as e:
+                print(f"  ⚠️  torch.compile failed: {e}")
+        else:
+            print("  ℹ️  torch.compile not available (requires PyTorch 2.0+)")
+        
         # Freeze all parameters
         for param in self.embedding_model.parameters():
             param.requires_grad = False
@@ -244,6 +255,9 @@ class BilingualEmbeddingGenerator:
             print(f"\n[{stage_name}] Generating embeddings...")
             print(f"  Total samples: {len(texts)}")
             print(f"  Batch size: {self.batch_size}")
+            print(f"  Max length: {self.max_length}")
+            print(f"\n  ⚡ Performance tip: If speed is critical, reduce --max_length")
+            print(f"     Attention is O(n²): 512→256 gives ~4x speedup, 512→128 gives ~16x speedup")
         
         start_time = time.time()
         last_log_time = start_time
