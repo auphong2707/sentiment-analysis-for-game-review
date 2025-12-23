@@ -4,13 +4,13 @@ Train machine learning models for sentiment analysis on game reviews.
 
 ## 🚀 Quick Start
 
-### bilingual-embedding-base + XGBoost (Recommended)
+### EmbeddingGemma-300m + XGBoost (Recommended)
 ```bash
 # Step 1: Generate embeddings (one-time, ~1-2 hours on GPU)
 bash model_phase/generate_embeddings.sh --dataset username/game-reviews-sentiment
 
 # Step 2: Train XGBoost (~20-40 mins)
-bash model_phase/train_xgboost.sh --checkpoint_dir model_phase/results/bilingual_embeddings/checkpoints
+bash model_phase/train_xgboost.sh --checkpoint_dir model_phase/results/gemma_embeddings/checkpoints
 ```
 
 ### RoBERTa
@@ -31,7 +31,7 @@ bash model_phase/train_LSTM_baseline.sh --dataset username/game-reviews-sentimen
 
 | Model | Training Time | Accuracy | Notes |
 |-------|---------------|----------|-------|
-| **bilingual-embedding-base + XGBoost** | ~2-4 hours | 80-90% | Best performance, requires GPU for embeddings |
+| **EmbeddingGemma-300m + XGBoost** | ~2-4 hours | 80-90% | Google's 300M param model (768-dim), requires GPU |
 | **RoBERTa** | ~4-8 hours | 75-85% | End-to-end fine-tuning, GPU required |
 | **LSTM** | ~1-2 hours | 70-80% | Baseline model, GPU optional |
 
@@ -54,19 +54,21 @@ WANDB_API_KEY=your_wandb_api_key
 ```bash
 bash model_phase/generate_embeddings.sh \
     --dataset username/game-reviews-sentiment \
-    --batch_size 64 \
-    --max_length 512 \
+    --batch_size 128 \
+    --max_length 256 \
     --subset 1.0 \
     --use_wandb
 ```
 
 **Options:**
 - `--dataset` - HuggingFace dataset (required)
-- `--batch_size` - Batch size (default: 64)
-- `--max_length` - Max tokens (default: 512)
+- `--batch_size` - Batch size (default: 128, optimized for 300M param model)
+- `--max_length` - Max tokens (default: 256, model supports up to 2048)
 - `--subset` - Data fraction 0-1 (default: 1.0)
 - `--experiment_name` - Custom name
 - `--use_wandb` - Enable W&B logging
+
+**Note:** EmbeddingGemma-300m requires accepting Google's license on HuggingFace. Run `huggingface-cli login` first.
 
 ---
 

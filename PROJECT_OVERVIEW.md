@@ -28,7 +28,7 @@ sentiment-analysis-for-game-review/
 ├── model_phase/                    # Phase 3: Model Training
 │   ├── README.md
 │   ├── main_LSTM_baseline.py      # LSTM baseline model
-│   ├── generate_bilingual_embeddings.py  # bilingual-embedding-base + XGBoost
+│   ├── generate_gemma_embeddings.py  # EmbeddingGemma-300m + XGBoost
 │   ├── main_xgboost.py            # XGBoost classifier
 │   ├── main_roberta.py            # Fine-tuned RoBERTa
 │   ├── utilities.py               # Utility functions
@@ -90,9 +90,9 @@ Train sentiment analysis models on the prepared dataset.
 python model_phase/main_LSTM_baseline.py --dataset your-username/game-reviews-sentiment
 
 # 7. Train proposed methods
-# bilingual-embedding-base + XGBoost
+# EmbeddingGemma-300m + XGBoost
 bash model_phase/generate_embeddings.sh --dataset your-username/game-reviews-sentiment
-bash model_phase/train_xgboost.sh --checkpoint_dir model_phase/results/bilingual_embeddings/checkpoints
+bash model_phase/train_xgboost.sh --checkpoint_dir model_phase/results/gemma_embeddings/checkpoints
 
 # Fine-tuned RoBERTa
 python model_phase/main_roberta.py --dataset your-username/game-reviews-sentiment
@@ -143,7 +143,7 @@ python model_phase/main_LSTM_baseline.py --dataset your-username/game-reviews-se
 
 # Proposed methods
 bash model_phase/generate_embeddings.sh --dataset your-username/game-reviews-sentiment
-bash model_phase/train_xgboost.sh --checkpoint_dir model_phase/results/bilingual_embeddings/checkpoints
+bash model_phase/train_xgboost.sh --checkpoint_dir model_phase/results/gemma_embeddings/checkpoints
 python model_phase/main_roberta.py --dataset your-username/game-reviews-sentiment
 ```
 
@@ -305,7 +305,7 @@ Each phase has detailed documentation:
 - ✅ Bidirectional processing
 
 **Proposed Methods:**
-- ✅ bilingual-embedding-base + XGBoost (bilingual embeddings with gradient boosting)
+- ✅ EmbeddingGemma-300m + XGBoost (Google's 300M param embedding model with gradient boosting)
 - ✅ Fine-tuned RoBERTa (state-of-the-art transformer model)
 - ✅ Comprehensive metrics (accuracy, precision, recall, F1)
 - ✅ WandB integration for experiment tracking
@@ -383,7 +383,7 @@ playwright install
 ├─────────────────────────────────────────────────────────┤
 │  Baseline: main_LSTM_baseline.py                        │
 │       ↓                                                 │
-│  Proposed: generate_bilingual_embeddings.py,            │
+│  Proposed: generate_gemma_embeddings.py,                │
 │            main_xgboost.py, main_roberta.py             │
 │       ↓                                                 │
 │  Trained Models + Metrics                               │

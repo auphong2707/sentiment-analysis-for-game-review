@@ -375,7 +375,7 @@ class XGBoostSentimentClassifier:
 
 
 def evaluate_classifier(model, texts, labels, split_name="Test", use_wandb=False, output_dir=None,
-                       embedding_model=None, tokenizer=None, max_length=512, batch_size=32):
+                       embedding_model=None, tokenizer=None, max_length=256, batch_size=128):
     """Evaluate classifier with end-to-end inference timing (embedding generation + XGBoost prediction).
     
     Args:
@@ -385,8 +385,8 @@ def evaluate_classifier(model, texts, labels, split_name="Test", use_wandb=False
         split_name: Name of the split for display
         use_wandb: Whether to log to WandB
         output_dir: Directory to save raw outputs
-        embedding_model: bilingual-embedding-small model for generating embeddings
-        tokenizer: bilingual-embedding-small tokenizer
+        embedding_model: SentenceTransformer model (EmbeddingGemma-300m) for generating embeddings
+        tokenizer: Not used (kept for compatibility, SentenceTransformer handles internally)
         max_length: Max sequence length for tokenization
         batch_size: Batch size for embedding generation
         
@@ -400,38 +400,26 @@ def evaluate_classifier(model, texts, labels, split_name="Test", use_wandb=False
     print(f"Evaluating on {split_name} set")
     print(f"{'='*60}")
     
-    if embedding_model is None or tokenizer is None:
-        raise ValueError("embedding_model and tokenizer are required for inference timing measurement")
+    if embedding_model is None:
+        raise ValueError("embedding_model is required for inference timing measurement")
     
     # Start timing for full inference pipeline
     total_start = time.time()
     
-    # Step 1: Generate bilingual-embedding-small embeddings
+    # Step 1: Generate EmbeddingGemma-300m embeddings using SentenceTransformer
     embedding_start = time.time()
-    device = next(embedding_model.parameters()).device
-    embeddings_list = []
     
     print(f"Generating embeddings for {len(texts)} samples...")
-    for i in range(0, len(texts), batch_size):
-        batch_texts = texts[i:i + batch_size]
-        
-        # Tokenize
-        inputs = tokenizer(
-            batch_texts,
-            padding=True,
-            truncation=True,
-            max_length=max_length,
-            return_tensors='pt'
-        ).to(device)
-        
-        # Generate embeddings
-        with torch.inference_mode():
-            outputs = embedding_model(**inputs)
-            # Use CLS token embedding
-            batch_embeddings = outputs.last_hidden_state[:, 0, :].cpu().numpy()
-            embeddings_list.append(batch_embeddings)
+    # SentenceTransformer handles batching and tokenization internally
+    X = embedding_model.encode(
+        texts,
+        batch_size=batch_size,
+        show_progress_bar=False,
+        convert_to_numpy=True,
+        normalize_embeddings=False,
+        device=embedding_model.device
+    )
     
-    X = np.vstack(embeddings_list)
     embedding_time = time.time() - embedding_start
     
     # Step 2: XGBoost prediction
@@ -861,33 +849,28 @@ def main(checkpoint_dir,
     
     print(f"\n✓ Training completed in {total_time:.2f}s")
     
-    # Load bilingual-embedding-small model for inference timing
+    # Load EmbeddingGemma-300m model for inference timing
     print(f"\n{'='*60}")
-    print("Loading bilingual-embedding-small Model for Inference Timing")
+    print("Loading EmbeddingGemma-300m Model for Inference Timing")
     print(f"{'='*60}")
     
-    from transformers import AutoModel, AutoTokenizer
+    from sentence_transformers import SentenceTransformer
     import torch
     
     # Get max_length and batch_size from checkpoint metadata
     checkpoint_metadata = loader.state.get('metadata', {})
-    embedding_max_length = checkpoint_metadata.get('max_length', 512)
-    embedding_batch_size = checkpoint_metadata.get('batch_size', 32)
+    embedding_max_length = checkpoint_metadata.get('max_length', 256)
+    embedding_batch_size = checkpoint_metadata.get('batch_size', 128)
     
-    print(f"Loading Lajavaness/bilingual-embedding-small...")
-    embedding_tokenizer = AutoTokenizer.from_pretrained('Lajavaness/bilingual-embedding-small', trust_remote_code=True)
-    embedding_model = AutoModel.from_pretrained('Lajavaness/bilingual-embedding-small', trust_remote_code=True)
-    
-    # Move to GPU and set to eval mode
+    print(f"Loading google/embeddinggemma-300m...")
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    embedding_model.to(device)
-    embedding_model.eval()
+    embedding_model = SentenceTransformer('google/embeddinggemma-300m', device=device)
+    embedding_model.max_seq_length = embedding_max_length
     
-    # Freeze all parameters
-    for param in embedding_model.parameters():
-        param.requires_grad = False
+    # Note: SentenceTransformer doesn't need tokenizer separately - it handles internally
+    embedding_tokenizer = None  # Not needed for SentenceTransformer
     
-    print(f"✓ bilingual-embedding-small loaded on {device}")
+    print(f"✓ EmbeddingGemma-300m loaded on {device}")
     print(f"  Using max_length={embedding_max_length}, batch_size={embedding_batch_size}")
     
     # Evaluate on validation set
