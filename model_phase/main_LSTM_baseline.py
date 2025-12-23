@@ -222,8 +222,10 @@ class LSTMSentimentClassifier:
         self.max_len = max_len
         self.vocab_size = vocab_size
         self.dropout_rate = dropout_rate
-        self.fc_sizes = tuple(fc_sizes)        self.eval_steps = eval_steps
-        self.save_steps = save_steps        self.random_state = random_state
+        self.fc_sizes = tuple(fc_sizes)
+        self.eval_steps = eval_steps
+        self.save_steps = save_steps
+        self.random_state = random_state
         
         # Set random seeds
         torch.manual_seed(random_state)
