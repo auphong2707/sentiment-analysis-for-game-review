@@ -348,6 +348,14 @@ class LSTMSentimentClassifier:
                 total_loss += loss.item()
                 progress_bar.set_postfix({'loss': f'{loss.item():.4f}', 'step': global_step})
                 
+                # Log training loss every 100 steps
+                if use_wandb and global_step % 100 == 0:
+                    log_to_wandb({
+                        'train/loss': loss.item(),
+                        'train/step': global_step,
+                        'train/epoch': epoch,
+                    }, use_wandb=True)
+                
                 global_step += 1
                 
                 # Step-based validation

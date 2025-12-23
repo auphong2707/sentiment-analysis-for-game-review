@@ -302,7 +302,7 @@ class RoBERTaSentimentClassifier:
             weight_decay=self.weight_decay,
             warmup_steps=self.warmup_steps,
             logging_dir=str(self.output_dir / "logs"),
-            logging_steps=10,
+            logging_steps=100,
             eval_strategy="steps",
             eval_steps=self.eval_steps,
             save_strategy="steps" if save_checkpoints else "no",
