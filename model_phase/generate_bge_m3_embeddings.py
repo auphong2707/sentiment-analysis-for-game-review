@@ -180,8 +180,8 @@ class BGEM3EmbeddingGenerator:
         
         # Load BGE-M3 model (frozen for embedding extraction)
         print(f"\nLoading BGE-M3 model: {self.model_name}")
-        self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
-        self.embedding_model = AutoModel.from_pretrained(self.model_name)
+        self.tokenizer = AutoTokenizer.from_pretrained(self.model_name, trust_remote_code=True)
+        self.embedding_model = AutoModel.from_pretrained(self.model_name, trust_remote_code=True)
         self.embedding_model.to(self.device)
         self.embedding_model.eval()  # Freeze embedding model
         
