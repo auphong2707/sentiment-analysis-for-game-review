@@ -556,8 +556,8 @@ if __name__ == "__main__":
                         help='HuggingFace dataset name')
     parser.add_argument('--max_length', type=int, default=256,
                         help='Maximum sequence length (256 recommended, model supports up to 2048 tokens)')
-    parser.add_argument('--batch_size', type=int, default=128,
-                        help='Batch size for embedding generation (reduced from 256 due to larger model)')
+    parser.add_argument('--batch_size', type=int, default=512,
+                        help='Batch size for embedding generation (optimized for 16GB GPU)')
     parser.add_argument('--subset', type=float, default=1.0,
                         help='Fraction of data to use')
     parser.add_argument('--output_dir', type=str, default=None,

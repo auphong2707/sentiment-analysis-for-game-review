@@ -17,7 +17,7 @@
 #
 # Options:
 #   --dataset         HuggingFace dataset name (required)
-#   --batch_size      Batch size (default: 128, optimized for 300M param model)
+#   --batch_size      Batch size (default: 512, optimized for 16GB GPU)
 #   --max_length      Max sequence length (default: 256, model supports up to 2048)
 #   --subset          Data fraction to use (default: 1.0)
 #   --output_dir      Output directory (default: auto-generated)
@@ -37,7 +37,7 @@ NC='\033[0m' # No Color
 
 # Default values
 DATASET=""
-BATCH_SIZE=128
+BATCH_SIZE=512
 MAX_LENGTH=256
 SUBSET=1.0
 OUTPUT_DIR=""
@@ -85,7 +85,7 @@ while [[ $# -gt 0 ]]; do
             echo ""
             echo "Options:"
             echo "  --dataset         HuggingFace dataset name (required)"
-            echo "  --batch_size      Batch size (default: 128)"
+            echo "  --batch_size      Batch size (default: 512)"
             echo "  --max_length      Max sequence length (default: 256, max: 2048)"
             echo "  --subset          Data fraction to use (default: 1.0)"
             echo "  --output_dir      Output directory"

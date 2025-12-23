@@ -34,5 +34,5 @@ wandb>=0.16.0
 
 # Deep Learning / Transformers
 torch>=2.0.0
-transformers==4.47.1
+transformers>=4.50.0  # Requires 4.50+ for Gemma 3 support (EmbeddingGemma)
 sentence-transformers>=2.2.0
