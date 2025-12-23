@@ -13,13 +13,13 @@ readonly DEFAULT_SUBSAMPLE=1.0
 readonly DEFAULT_COLSAMPLE_BYTREE=1.0
 
 # Grid search parameters (optimized for imbalanced classes)
-readonly LEARNING_RATE_VALUES=(0.05 0.1 0.15)
+readonly LEARNING_RATE_VALUES=(0.05 0.1)
 readonly N_ESTIMATORS_VALUES=(5000)  # Fixed large value - early stopping will find optimal point
-readonly MAX_DEPTH_VALUES=(4 6 8)
-readonly MIN_CHILD_WEIGHT_VALUES=(1 3 5)
-readonly SUBSAMPLE_VALUES=(1.0)
-readonly COLSAMPLE_BYTREE_VALUES=(1.0)
-readonly REG_LAMBDA_VALUES=(1)
+readonly MAX_DEPTH_VALUES=(4 6)
+readonly MIN_CHILD_WEIGHT_VALUES=(1 3)
+readonly SUBSAMPLE_VALUES=(0.8 1.0)  # Subsample rows to prevent overfitting
+readonly COLSAMPLE_BYTREE_VALUES=(0.8 1.0)  # Subsample features to prevent overfitting
+readonly REG_LAMBDA_VALUES=(1 10)  # L2 regularization strength
 
 # Load dataset from .env if available
 if [ -f .env ]; then
