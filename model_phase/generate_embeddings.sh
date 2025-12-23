@@ -7,7 +7,7 @@ set -e  # Exit on error
 
 # BGE-M3 parameters (constants)
 readonly MAX_LENGTH=512
-readonly BATCH_SIZE=64
+readonly BATCH_SIZE=256
 
 # Load dataset from .env if available
 if [ -f .env ]; then
