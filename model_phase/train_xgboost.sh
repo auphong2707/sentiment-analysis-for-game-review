@@ -258,8 +258,8 @@ fi
 if [ -n "$DATASET" ]; then
     FINAL_CMD="$FINAL_CMD --dataset $DATASET"
     # Tự động upload lên HuggingFace với repo name = dataset name
-    FINAL_CMD="$FINAL_CMD --hf_repo $DATASET"
-    echo "📤 Sẽ upload kết quả lên HuggingFace Hub: $DATASET"
+    FINAL_CMD="$FINAL_CMD --hf_repo auphong2707/wm-grsa-be-xgboost-results"
+    echo "📤 Sẽ upload kết quả lên HuggingFace Hub: auphong2707/wm-grsa-be-xgboost-results"
 fi
 
 echo "Running: $FINAL_CMD"
