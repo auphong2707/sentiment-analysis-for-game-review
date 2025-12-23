@@ -286,7 +286,34 @@ with open(OUTPUT_DIR / 'detailed_analysis.txt', 'w', encoding='utf-8') as f:
     f.write("-"*80 + "\n")
     f.write(f"Total reviews: {len(df):,}\n")
     f.write(f"\nCategory distribution:\n{category_counts}\n")
-    f.write(f"\nText length statistics:\n{df[['text_length', 'word_count']].describe()}\n")
+    f.write(f"\nText length statistics (overall):\n{df[['text_length', 'word_count']].describe()}\n")
+
+    # Per-category statistics for LaTeX table
+    f.write("\nText length and word count statistics by category:\n")
+    stats = {}
+    for category in categories:
+        cat_df = df[df['review_category'] == category]
+        stats[category] = {
+            'text_length_mean': cat_df['text_length'].mean(),
+            'text_length_median': cat_df['text_length'].median(),
+            'text_length_std': cat_df['text_length'].std(),
+            'text_length_min': cat_df['text_length'].min(),
+            'text_length_max': cat_df['text_length'].max(),
+            'word_count_mean': cat_df['word_count'].mean(),
+            'word_count_median': cat_df['word_count'].median(),
+            'word_count_25': cat_df['word_count'].quantile(0.25),
+            'word_count_75': cat_df['word_count'].quantile(0.75),
+            'word_count_std': cat_df['word_count'].std(),
+        }
+        f.write(f"\nCategory: {category}\n")
+        f.write(f"  text_length: mean={stats[category]['text_length_mean']:.2f}, median={stats[category]['text_length_median']:.0f}, std={stats[category]['text_length_std']:.2f}, min={stats[category]['text_length_min']}, max={stats[category]['text_length_max']}\n")
+        f.write(f"  word_count: mean={stats[category]['word_count_mean']:.2f}, median={stats[category]['word_count_median']:.0f}, 25%={stats[category]['word_count_25']:.0f}, 75%={stats[category]['word_count_75']:.0f}, std={stats[category]['word_count_std']:.2f}\n")
+
+    # Also print overall for easy copy-paste
+    f.write(f"\nOverall:\n")
+    f.write(f"  text_length: mean={df['text_length'].mean():.2f}, median={df['text_length'].median():.0f}, std={df['text_length'].std():.2f}, min={df['text_length'].min()}, max={df['text_length'].max()}\n")
+    f.write(f"  word_count: mean={df['word_count'].mean():.2f}, median={df['word_count'].median():.0f}, 25%={df['word_count'].quantile(0.25):.0f}, 75%={df['word_count'].quantile(0.75):.0f}, std={df['word_count'].std():.2f}\n")
+
     for category in categories:
         f.write(f"\n\n{'='*80}\n")
         f.write(f"CATEGORY: {category.upper()}\n")
