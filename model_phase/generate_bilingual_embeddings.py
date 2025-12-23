@@ -164,7 +164,7 @@ class BilingualEmbeddingGenerator:
     
     def __init__(self, 
                  max_length=512,
-                 batch_size=32,
+                 batch_size=256,
                  checkpoint_manager=None):
         self.model_name = MODEL_NAME
         self.max_length = max_length
@@ -177,6 +177,9 @@ class BilingualEmbeddingGenerator:
         if self.device.type == 'cuda':
             print(f"GPU: {torch.cuda.get_device_name(0)}")
             print(f"GPU Memory: {torch.cuda.get_device_properties(0).total_memory / 1e9:.2f} GB")
+            print(f"⚡ Mixed precision (FP16) enabled for faster inference")
+        else:
+            print("⚠️  Warning: Running on CPU will be very slow. Use GPU for faster embeddings.")
         
         # Load bilingual-embedding-base model (frozen for embedding extraction)
         print(f"\nLoading bilingual-embedding-base model: {self.model_name}")
@@ -228,10 +231,23 @@ class BilingualEmbeddingGenerator:
             print(f"  Batch size: {self.batch_size}")
         
         start_time = time.time()
+        last_log_time = start_time
+        
+        # Will detect embedding dimension from first batch and pre-allocate array
+        all_embeddings = None
+        
+        # If resuming, load partial embeddings
+        if start_idx > 0 and embeddings:
+            partial_emb = embeddings[0]
+            embedding_dim = partial_emb.shape[1]
+            all_embeddings = np.empty((len(texts), embedding_dim), dtype=np.float32)
+            all_embeddings[:len(partial_emb)] = partial_emb
+            embeddings = []  # Clear list
         
         # Create batches
         for i in range(start_idx, len(texts), self.batch_size):
             batch_texts = texts[i:i + self.batch_size]
+            batch_end = i + len(batch_texts)
             
             # Tokenize
             inputs = self.tokenizer(
@@ -240,38 +256,52 @@ class BilingualEmbeddingGenerator:
                 truncation=True,
                 max_length=self.max_length,
                 return_tensors='pt'
-            ).to(self.device)
+            )
             
-            # Generate embeddings
+            # Move to GPU with non_blocking for async transfer
+            inputs = {k: v.to(self.device, non_blocking=True) for k, v in inputs.items()}
+            
+            # Generate embeddings with mixed precision for speed
             with torch.inference_mode():
-                outputs = self.embedding_model(**inputs)
-                # Use CLS token embedding
-                batch_embeddings = outputs.last_hidden_state[:, 0, :].cpu().numpy()
-                embeddings.append(batch_embeddings)
+                # Use autocast for automatic mixed precision (2-4x speedup on modern GPUs)
+                with torch.cuda.amp.autocast(enabled=self.device.type == 'cuda'):
+                    outputs = self.embedding_model(**inputs)
+                    # Use CLS token embedding - keep on GPU
+                    batch_embeddings = outputs.last_hidden_state[:, 0, :].float()
             
-            processed = i + len(batch_texts)
+            # Detect embedding dimension from first batch and allocate array
+            if all_embeddings is None:
+                embedding_dim = batch_embeddings.shape[1]
+                all_embeddings = np.empty((len(texts), embedding_dim), dtype=np.float32)
+                print(f"  Detected embedding dimension: {embedding_dim}")
             
-            # Progress logging
-            if (i // self.batch_size + 1) % 10 == 0 or processed == len(texts):
-                elapsed = time.time() - start_time
+            # Batch copy to CPU and store in pre-allocated array (reduces sync overhead)
+            all_embeddings[i:batch_end] = batch_embeddings.cpu().numpy()
+            
+            processed = batch_end
+            current_time = time.time()
+            
+            # Progress logging - only every 5 seconds or at completion to reduce overhead
+            if (current_time - last_log_time >= 5.0) or processed == len(texts):
+                elapsed = current_time - start_time
                 samples_per_sec = processed / elapsed if elapsed > 0 else 0
                 eta = (len(texts) - processed) / samples_per_sec if samples_per_sec > 0 else 0
                 print(f"  Progress: {processed}/{len(texts)} samples "
                       f"({processed/len(texts)*100:.1f}%) - "
                       f"{samples_per_sec:.1f} samples/s - "
                       f"ETA: {eta:.0f}s")
+                last_log_time = current_time
             
-            # INCREMENTAL CHECKPOINT: Save every 100 batches (~6400 samples with batch_size=64)
-            if self.checkpoint_manager and (i // self.batch_size + 1) % 100 == 0:
-                current_embeddings = np.vstack(embeddings)
+            # INCREMENTAL CHECKPOINT: Save every 200 batches to reduce I/O overhead
+            if self.checkpoint_manager and (i // self.batch_size + 1) % 200 == 0:
                 np.savez_compressed(
                     partial_file,
-                    embeddings=current_embeddings,
+                    embeddings=all_embeddings[:processed],
                     last_index=processed
                 )
                 print(f"  💾 Partial checkpoint saved at {processed}/{len(texts)} samples")
         
-        embeddings = np.vstack(embeddings)
+        embeddings = all_embeddings
         elapsed = time.time() - start_time
         
         print(f"  ✓ Embeddings generated: {embeddings.shape}")
