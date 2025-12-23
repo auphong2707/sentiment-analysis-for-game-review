@@ -228,17 +228,6 @@ class BilingualEmbeddingGenerator:
         self.embedding_model.to(self.device)
         self.embedding_model.eval()  # Freeze embedding model
         
-        # Optimize with torch.compile for 20-30% speedup (PyTorch 2.0+)
-        if hasattr(torch, 'compile'):
-            try:
-                print("  Optimizing model with torch.compile...")
-                self.embedding_model = torch.compile(self.embedding_model, mode='max-autotune')
-                print("  ✓ torch.compile enabled (expect 20-30% speedup after warmup)")
-            except Exception as e:
-                print(f"  ⚠️  torch.compile failed: {e}")
-        else:
-            print("  ℹ️  torch.compile not available (requires PyTorch 2.0+)")
-        
         # Freeze all parameters
         for param in self.embedding_model.parameters():
             param.requires_grad = False
@@ -274,31 +263,6 @@ class BilingualEmbeddingGenerator:
             print(f"\n[{stage_name}] Generating embeddings...")
             print(f"  Total samples: {len(texts)}")
             print(f"  Batch size: {self.batch_size}")
-            print(f"  Max length: {self.max_length}")
-            
-            # Analyze actual text lengths to show wasted computation
-            print(f"\n  📊 Analyzing text lengths (sampling 1000 texts)...")
-            sample_size = min(1000, len(texts))
-            sample_texts = texts[:sample_size]
-            sample_tokens = [len(self.tokenizer.encode(text, add_special_tokens=True)) for text in sample_texts]
-            avg_tokens = np.mean(sample_tokens)
-            median_tokens = np.median(sample_tokens)
-            p95_tokens = np.percentile(sample_tokens, 95)
-            max_tokens = np.max(sample_tokens)
-            
-            print(f"     Average: {avg_tokens:.0f} tokens | Median: {median_tokens:.0f} | 95th percentile: {p95_tokens:.0f} | Max: {max_tokens:.0f}")
-            wasted_compute = (self.max_length - avg_tokens) / self.max_length * 100
-            print(f"     Wasted computation: {wasted_compute:.1f}% (padding to {self.max_length})")
-            
-            # Suggest optimal max_length
-            suggested_max_length = int(np.ceil(p95_tokens / 64) * 64)  # Round up to nearest 64
-            if suggested_max_length < self.max_length:
-                speedup = (self.max_length / suggested_max_length) ** 2  # Quadratic attention
-                print(f"\n  💡 RECOMMENDATION: Use --max_length {suggested_max_length} for {speedup:.1f}x speedup!")
-                print(f"     This covers 95% of texts and reduces wasted computation to ~{(suggested_max_length - avg_tokens) / suggested_max_length * 100:.1f}%")
-            
-            print(f"\n  ⚡ Performance tip: Reduce --max_length for massive speedup")
-            print(f"     Attention is O(n²): 512→256 gives ~4x speedup, 512→128 gives ~16x speedup")
         
         start_time = time.time()
         last_log_time = start_time
