@@ -240,7 +240,7 @@ class LSTMSentimentClassifier:
         
         print(f"✓ LSTM Classifier initialized (device: {self.device})")
         
-    def fit(self, texts, labels, val_texts=None, val_labels=None, use_wandb=False):
+    def fit(self, texts, labels, val_texts=None, val_labels=None, output_dir=None, use_wandb=False):
         """
         Train the LSTM model on text data.
         
@@ -248,9 +248,12 @@ class LSTMSentimentClassifier:
             texts: List of review texts
             labels: List of sentiment labels
             val_texts: Optional list of validation review texts
+            output_dir: Directory to save checkpoints and model artifacts
             val_labels: Optional list of validation sentiment labels
             use_wandb: Whether to log metrics to wandb
         """
+        self.output_dir = output_dir
+        
         print("\n[1/4] Encoding labels...")
         y_encoded = self.label_encoder.fit_transform(labels)
         num_classes = len(self.label_encoder.classes_)
@@ -731,6 +734,7 @@ def main(dataset_name,
         train_data['label'],
         val_texts=val_data['text'],
         val_labels=val_data['label'],
+        output_dir=output_dir,
         use_wandb=wandb_initialized
     )
     train_time = time.time() - train_start
