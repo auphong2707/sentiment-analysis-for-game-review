@@ -346,6 +346,8 @@ class LSTMSentimentClassifier:
                 optimizer.step()
                 
                 total_loss += loss.item()
+                global_step += 1
+                
                 progress_bar.set_postfix({'loss': f'{loss.item():.4f}', 'step': global_step})
                 
                 # Log training loss every 100 steps
@@ -355,8 +357,6 @@ class LSTMSentimentClassifier:
                         'train/step': global_step,
                         'train/epoch': epoch,
                     }, use_wandb=True)
-                
-                global_step += 1
                 
                 # Step-based validation
                 if val_dataloader is not None and global_step % self.eval_steps == 0:
@@ -377,16 +377,20 @@ class LSTMSentimentClassifier:
                                 val_loss = criterion(val_outputs, targets_loss)
                                 # Get predictions
                                 probs = torch.sigmoid(val_outputs).squeeze()
-                                preds = (probs > 0.5).cpu().numpy()
+                                preds = (probs > 0.5).long()
+                                # Store predictions and targets
+                                val_predictions.extend(preds.cpu().tolist())
+                                val_targets.extend(val_targets_batch.cpu().tolist())
                             else:
                                 targets_loss = val_targets_batch.long().clamp(0, num_classes - 1)
                                 val_loss = criterion(val_outputs, targets_loss)
                                 # Get predictions
-                                preds = val_outputs.argmax(dim=1).cpu().numpy()
+                                preds = val_outputs.argmax(dim=1)
+                                # Store predictions and targets
+                                val_predictions.extend(preds.cpu().tolist())
+                                val_targets.extend(val_targets_batch.cpu().tolist())
                             
                             val_total_loss += val_loss.item()
-                            val_predictions.extend(preds)
-                            val_targets.extend(val_targets_batch.cpu().numpy())
                     
                     val_loss_avg = val_total_loss / len(val_dataloader)
                     val_acc = accuracy_score(val_targets, val_predictions)
@@ -452,7 +456,7 @@ class LSTMSentimentClassifier:
         # Load best checkpoint if available
         if best_checkpoint_path is not None and best_checkpoint_path.exists():
             print(f"\n✓ Loading best checkpoint: {best_checkpoint_path.name} (F1: {best_val_f1:.4f})")
-            checkpoint = torch.load(best_checkpoint_path, map_location=self.device)
+            checkpoint = torch.load(best_checkpoint_path, map_location=self.device, weights_only=False)
             self.model.load_state_dict(checkpoint['model_state_dict'])
         
         self.is_fitted = True
