@@ -1,11 +1,11 @@
 #!/bin/bash
-# bilingual-embedding-base Embedding Generation Script
-# Generates bilingual-embedding-base embeddings for downstream classifiers (e.g., XGBoost)
+# BGE-M3 Embedding Generation Script
+# Generates BGE-M3 embeddings for downstream classifiers (e.g., XGBoost)
 # Usage: bash generate_embeddings.sh --dataset your-username/game-reviews-sentiment
 
 set -e  # Exit on error
 
-# bilingual-embedding-base parameters (constants)
+# BGE-M3 parameters (constants)
 readonly MAX_LENGTH=512
 readonly BATCH_SIZE=256
 
@@ -77,7 +77,7 @@ if [ -z "$DATASET" ]; then
 fi
 
 echo "============================================================"
-echo "bilingual-embedding-base Embedding Generation"
+echo "BGE-M3 Embedding Generation"
 echo "============================================================"
 echo "Dataset: $DATASET"
 echo "Subset: $SUBSET"
@@ -98,10 +98,10 @@ echo ""
 if [ -n "$EXPERIMENT_NAME" ]; then
     EMBEDDING_DIR="$OUTPUT_BASE_DIR/$EXPERIMENT_NAME"
 else
-    EMBEDDING_DIR="$OUTPUT_BASE_DIR/bilingual_embeddings"
+    EMBEDDING_DIR="$OUTPUT_BASE_DIR/bge_m3_embeddings"
 fi
 
-EMBEDDING_CMD="python model_phase/generate_bilingual_embeddings.py \
+EMBEDDING_CMD="python model_phase/generate_bge_m3_embeddings.py \
     --dataset $DATASET \
     --max_length $MAX_LENGTH \
     --batch_size $BATCH_SIZE \

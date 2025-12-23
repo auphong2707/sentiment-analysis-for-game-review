@@ -4,13 +4,13 @@ Train machine learning models for sentiment analysis on game reviews.
 
 ## 🚀 Quick Start
 
-### BGE-M3 + XGBoost (Recommended)
+### bilingual-embedding-base + XGBoost (Recommended)
 ```bash
 # Step 1: Generate embeddings (one-time, ~1-2 hours on GPU)
 bash model_phase/generate_embeddings.sh --dataset username/game-reviews-sentiment
 
 # Step 2: Train XGBoost (~20-40 mins)
-bash model_phase/train_xgboost.sh --checkpoint_dir model_phase/results/bge_m3_embeddings/checkpoints
+bash model_phase/train_xgboost.sh --checkpoint_dir model_phase/results/bilingual_embeddings/checkpoints
 ```
 
 ### RoBERTa
@@ -31,7 +31,7 @@ bash model_phase/train_LSTM_baseline.sh --dataset username/game-reviews-sentimen
 
 | Model | Training Time | Accuracy | Notes |
 |-------|---------------|----------|-------|
-| **BGE-M3 + XGBoost** | ~2-4 hours | 80-90% | Best performance, requires GPU for embeddings |
+| **bilingual-embedding-base + XGBoost** | ~2-4 hours | 80-90% | Best performance, requires GPU for embeddings |
 | **RoBERTa** | ~4-8 hours | 75-85% | End-to-end fine-tuning, GPU required |
 | **LSTM** | ~1-2 hours | 70-80% | Baseline model, GPU optional |
 
@@ -151,9 +151,9 @@ bash model_phase/train_LSTM_baseline.sh \
 
 All scripts save results to `model_phase/results/` with auto-upload to HuggingFace Hub.
 
-**BGE-M3 Embeddings:**
+**bilingual-embedding-base Embeddings:**
 ```
-results/bge_m3_embeddings/checkpoints/
+results/bilingual_embeddings/checkpoints/
 ├── checkpoint_state.json
 ├── train_embeddings_embeddings.npz
 ├── validation_embeddings_embeddings.npz

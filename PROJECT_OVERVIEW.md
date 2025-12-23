@@ -28,8 +28,9 @@ sentiment-analysis-for-game-review/
 ├── model_phase/                    # Phase 3: Model Training
 │   ├── README.md
 │   ├── main_LSTM_baseline.py      # LSTM baseline model
-│   ├── main_bge_m3.py             # BGE M3 + XGBoost (proposed)
-│   ├── main_roberta.py            # Fine-tuned RoBERTa (proposed)
+│   ├── generate_bilingual_embeddings.py  # bilingual-embedding-base + XGBoost
+│   ├── main_xgboost.py            # XGBoost classifier
+│   ├── main_roberta.py            # Fine-tuned RoBERTa
 │   ├── utilities.py               # Utility functions
 │   └── results/                   # Training results
 │
@@ -89,8 +90,9 @@ Train sentiment analysis models on the prepared dataset.
 python model_phase/main_LSTM_baseline.py --dataset your-username/game-reviews-sentiment
 
 # 7. Train proposed methods
-# BGE M3 + XGBoost
-python model_phase/main_bge_m3.py --dataset your-username/game-reviews-sentiment
+# bilingual-embedding-base + XGBoost
+bash model_phase/generate_embeddings.sh --dataset your-username/game-reviews-sentiment
+bash model_phase/train_xgboost.sh --checkpoint_dir model_phase/results/bilingual_embeddings/checkpoints
 
 # Fine-tuned RoBERTa
 python model_phase/main_roberta.py --dataset your-username/game-reviews-sentiment
@@ -140,7 +142,8 @@ python data_prepare_phase/prepare_and_upload_hf_dataset.py
 python model_phase/main_LSTM_baseline.py --dataset your-username/game-reviews-sentiment
 
 # Proposed methods
-python model_phase/main_bge_m3.py --dataset your-username/game-reviews-sentiment
+bash model_phase/generate_embeddings.sh --dataset your-username/game-reviews-sentiment
+bash model_phase/train_xgboost.sh --checkpoint_dir model_phase/results/bilingual_embeddings/checkpoints
 python model_phase/main_roberta.py --dataset your-username/game-reviews-sentiment
 ```
 
@@ -302,7 +305,7 @@ Each phase has detailed documentation:
 - ✅ Bidirectional processing
 
 **Proposed Methods:**
-- ✅ BGE M3 + XGBoost (multilingual embeddings with gradient boosting)
+- ✅ bilingual-embedding-base + XGBoost (bilingual embeddings with gradient boosting)
 - ✅ Fine-tuned RoBERTa (state-of-the-art transformer model)
 - ✅ Comprehensive metrics (accuracy, precision, recall, F1)
 - ✅ WandB integration for experiment tracking
@@ -380,7 +383,8 @@ playwright install
 ├─────────────────────────────────────────────────────────┤
 │  Baseline: main_LSTM_baseline.py                        │
 │       ↓                                                 │
-│  Proposed: main_bge_m3.py, main_roberta.py              │
+│  Proposed: generate_bilingual_embeddings.py,            │
+│            main_xgboost.py, main_roberta.py             │
 │       ↓                                                 │
 │  Trained Models + Metrics                               │
 │  - Accuracy, Precision, Recall, F1                      │
@@ -410,11 +414,6 @@ Use your trained models:
 # LSTM Baseline
 from model_phase.main_LSTM_baseline import LSTMSentimentClassifier
 model = LSTMSentimentClassifier.load('model_phase/results/lstm_baseline_TIMESTAMP')
-predictions = model.predict(["This game is amazing!", "Terrible experience"])
-
-# BGE M3 + XGBoost
-from model_phase.main_bge_m3 import BGEM3Classifier
-model = BGEM3Classifier.load('model_phase/results/bge_m3_TIMESTAMP')
 predictions = model.predict(["This game is amazing!", "Terrible experience"])
 
 # RoBERTa
