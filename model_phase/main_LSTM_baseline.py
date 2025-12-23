@@ -365,7 +365,7 @@ class LSTMSentimentClassifier:
                     val_predictions = []
                     val_targets = []
                     
-                    with torch.no_grad():
+                    with torch.inference_mode():
                         for val_inputs, val_targets_batch in val_dataloader:
                             val_inputs = val_inputs.to(self.device)
                             val_targets_batch = val_targets_batch.to(self.device)
@@ -482,7 +482,7 @@ class LSTMSentimentClassifier:
         predictions = []
         num_classes = len(self.label_encoder.classes_)
         
-        with torch.no_grad():
+        with torch.inference_mode():
             for inputs, _ in dataloader:
                 inputs = inputs.to(self.device)
                 outputs = self.model(inputs)
@@ -519,7 +519,7 @@ class LSTMSentimentClassifier:
         probabilities = []
         num_classes = len(self.label_encoder.classes_)
         
-        with torch.no_grad():
+        with torch.inference_mode():
             for inputs, _ in dataloader:
                 inputs = inputs.to(self.device)
                 outputs = self.model(inputs)

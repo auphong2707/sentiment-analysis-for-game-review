@@ -414,7 +414,7 @@ class RoBERTaSentimentClassifier:
             device = next(self.model.parameters()).device
             
             pred_labels = []
-            with torch.no_grad():
+            with torch.inference_mode():
                 for i in range(len(dataset)):
                     item = dataset[i]
                     input_ids = item['input_ids'].unsqueeze(0).to(device)

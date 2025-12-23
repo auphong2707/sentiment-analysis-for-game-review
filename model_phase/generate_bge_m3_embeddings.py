@@ -242,7 +242,7 @@ class BGEM3EmbeddingGenerator:
             ).to(self.device)
             
             # Generate embeddings
-            with torch.no_grad():
+            with torch.inference_mode():
                 outputs = self.embedding_model(**inputs)
                 # Use CLS token embedding
                 batch_embeddings = outputs.last_hidden_state[:, 0, :].cpu().numpy()
