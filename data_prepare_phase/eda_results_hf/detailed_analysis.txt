@@ -1,0 +1,154 @@
+================================================================================
+DETAILED EDA REPORT - GAME REVIEW SENTIMENT DATASET (HuggingFace)
+================================================================================
+
+1. BASIC STATISTICS
+--------------------------------------------------------------------------------
+Total reviews: 629,884
+
+Category distribution:
+review_category
+positive    368669
+negative    159847
+mixed       101368
+Name: count, dtype: int64
+
+Text length statistics (overall):
+         text_length     word_count
+count  629884.000000  629884.000000
+mean      610.212042     111.027869
+std       766.400205     138.559465
+min         3.000000       1.000000
+25%       178.000000      33.000000
+50%       337.000000      62.000000
+75%       698.000000     128.000000
+max      8995.000000    1672.000000
+
+Text length and word count statistics by category:
+
+Category: positive
+  text_length: mean=551.19, median=304, std=706.40, min=3, max=8995
+  word_count: mean=100.28, median=56, 25%=30, 75%=114, std=127.63
+
+Category: negative
+  text_length: mean=609.43, median=343, std=753.76, min=3, max=8978
+  word_count: mean=110.95, median=63, 25%=33, 75%=129, std=136.60
+
+Category: mixed
+  text_length: mean=826.10, median=484, std=937.98, min=4, max=8860
+  word_count: mean=150.25, median=89, 25%=44, 75%=185, std=169.32
+
+Overall:
+  text_length: mean=610.21, median=337, std=766.40, min=3, max=8995
+  word_count: mean=111.03, median=62, 25%=33, 75%=128, std=138.56
+
+
+================================================================================
+CATEGORY: POSITIVE
+================================================================================
+
+Top 30 most common words:
+ 1. game                 - 857,031 times
+ 2. like                 - 176,459 times
+ 3. story                - 164,517 times
+ 4. games                - 152,263 times
+ 5. one                  - 151,386 times
+ 6. great                - 150,546 times
+ 7. good                 - 144,757 times
+ 8. there                - 136,691 times
+ 9. play                 - 125,957 times
+10. best                 - 122,688 times
+11. from                 - 121,813 times
+12. fun                  - 120,103 times
+13. really               - 118,260 times
+14. time                 - 104,542 times
+15. gameplay             - 94,128 times
+16. get                  - 89,472 times
+17. out                  - 85,643 times
+18. much                 - 83,440 times
+19. new                  - 82,170 times
+20. well                 - 80,768 times
+21. even                 - 80,247 times
+22. about                - 78,115 times
+23. played               - 77,060 times
+24. graphics             - 75,759 times
+25. also                 - 74,417 times
+26. first                - 74,065 times
+27. world                - 69,870 times
+28. amazing              - 68,706 times
+29. still                - 66,612 times
+30. characters           - 65,135 times
+
+
+================================================================================
+CATEGORY: NEGATIVE
+================================================================================
+
+Top 30 most common words:
+ 1. game                 - 384,991 times
+ 2. like                 - 89,574 times
+ 3. there                - 65,646 times
+ 4. from                 - 63,312 times
+ 5. even                 - 62,249 times
+ 6. play                 - 57,677 times
+ 7. games                - 54,053 times
+ 8. one                  - 53,369 times
+ 9. get                  - 50,247 times
+10. time                 - 46,820 times
+11. good                 - 46,520 times
+12. out                  - 42,432 times
+13. about                - 41,386 times
+14. bad                  - 40,331 times
+15. because              - 40,281 times
+16. story                - 40,208 times
+17. really               - 39,847 times
+18. much                 - 32,165 times
+19. new                  - 31,321 times
+20. make                 - 30,640 times
+21. gameplay             - 30,057 times
+22. any                  - 29,700 times
+23. after                - 29,286 times
+24. then                 - 28,351 times
+25. money                - 28,064 times
+26. first                - 28,058 times
+27. fun                  - 27,008 times
+28. graphics             - 26,922 times
+29. people               - 26,373 times
+30. way                  - 25,828 times
+
+
+================================================================================
+CATEGORY: MIXED
+================================================================================
+
+Top 30 most common words:
+ 1. game                 - 300,743 times
+ 2. like                 - 80,730 times
+ 3. there                - 66,470 times
+ 4. good                 - 62,804 times
+ 5. story                - 57,945 times
+ 6. from                 - 50,966 times
+ 7. really               - 49,048 times
+ 8. one                  - 45,879 times
+ 9. fun                  - 44,575 times
+10. games                - 42,875 times
+11. play                 - 41,755 times
+12. get                  - 41,047 times
+13. time                 - 39,821 times
+14. much                 - 37,514 times
+15. out                  - 36,218 times
+16. even                 - 35,249 times
+17. gameplay             - 33,610 times
+18. great                - 32,117 times
+19. about                - 31,036 times
+20. also                 - 29,944 times
+21. because              - 29,274 times
+22. first                - 28,715 times
+23. still                - 27,706 times
+24. new                  - 26,990 times
+25. bad                  - 26,632 times
+26. well                 - 26,009 times
+27. better               - 24,681 times
+28. graphics             - 24,424 times
+29. way                  - 23,596 times
+30. lot                  - 23,484 times

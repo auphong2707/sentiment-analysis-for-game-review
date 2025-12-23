@@ -1,0 +1,94 @@
+================================================================================
+SYSTEMATICALLY SELECTED REPRESENTATIVE SAMPLES
+================================================================================
+
+SELECTION METHODOLOGY:
+--------------------------------------------------------------------------------
+1. Random sampling: 100 reviews randomly selected from each category
+2. Statistical filtering: Exclude outliers (< 10 words or > 300 words)
+3. For mixed reviews: Prioritize samples with contrast markers
+4. Stratified selection: Select samples across length spectrum:
+   - Short: below median word count
+   - Medium: median to 75th percentile
+   - Long: above 75th percentile
+5. Final output: 5 representative samples per category
+
+================================================================================
+POSITIVE REVIEW SAMPLES
+================================================================================
+
+Sample 1 - 23 words, 121 characters
+--------------------------------------------------------------------------------
+Enjoyed this game, pretty much it was the best game I ever played this year , however i hates be an exclusive experience.
+
+Sample 2 - 64 words, 363 characters
+--------------------------------------------------------------------------------
+Mario Kart World marks the new beginning of the Mario Kart series, and thanks to the power of Switch 2, it does so in style. A quality open world, graphically very valid and with fun gameplay that never tires. The immense roster, also thanks to the alternative skins, and the tracks reworked to guarantee replayability, make it a must have for every Nintendo fan.
+
+Sample 3 - 129 words, 694 characters
+--------------------------------------------------------------------------------
+The base game is good and for my first campaign. It was played without any bugs. The plot is ok and forgettable with the cliche of our terrible politics. I miss the multiplayer game choice. My impressions is that every faction is balanced in its ways. I miss the multiplayer game choice. Why not a Hotseat mode or even an online game possible? The 2d art is good but i could not say the same about the 3d graphics and i still remember the great animations in Brigandine: Legend of Forsena Grand Edition in the Play Station 1. I hope more games like these come to the new generations of consoles or pcs. A remake of Brigandine: The Legend of Forsena Grand Edition for the Switch could be superb!
+
+Sample 4 - 252 words, 1393 characters
+--------------------------------------------------------------------------------
+Dead Space 2, on the surface, appears to be more of the same. After the hard slog through Dead Space one that was more a shoot-em-up to the extreme of ammo conservation, it seems Dead Space 2 will be the same. But instead... Dead Space 2 features a number of sequences that are less shoot 'em up and more a little different. Now, there's plenty of shoot 'em up and the new design structure seems about less spawns, most of the time, less ammo, and more intense fights with less enemies. Those enemies that are more swarmy are fully intended to be so; easily killed by the pulse rifle in a few hits. Overall, the game is more intense and better pace than the original, with a smaller body count but a much more fulfilling one. Story is better told and paced, along with thank the lords, the protagonist gaining a personality and soul. Silent Protagonist is a boring, out of place thing on a character with a defined look and name; you can't place yourself in the role anyways, so why make them silent? It's an old throwback. Beyond the digression, some of the new guns are fun editions, and nearly all the new enemies are worthwhile additions. The Rams definitely make for some unique and frightening sequences. I loved the game, enough to give it a twice over. Kinda wish it had a harder difficulty than Zealot you could take your pimped out game completion character onto to keep progressing!
+
+Sample 5 - 175 words, 1016 characters
+--------------------------------------------------------------------------------
+As an original player of FFXIV 1.0, I have to admit, I went into ARR with low expectations. I expected to see a rushed product only hoping to recoup the massive losses that 1.0 incurred. That said, I was blown away by the sheer overhaul of the game. The environments, sound, gameplay all did a massive 180-degree turn. Everything has made a drastic improvement from the original, with better combat, a better HUD, and more accessibility for those who are new to the game. That being said, launch has been plauged significantly with constant server congestion and lockouts, which is annoying, seeing as how the game is beautiful once you beat the dreaded 1017. Much of the problem lies in SE not being prepared for the positive reaction to the game, which is a catch twenty-two indeed. As of today, Sept. 3rd, there is a scheduled maintenence that will hopefully restore functionality to the servers and clear up the massive congestion. tl;dr: The game is EXCELLENT once you get passed the dreaded 1017 log-in issues.
+
+
+================================================================================
+NEGATIVE REVIEW SAMPLES
+================================================================================
+
+Sample 1 - 18 words, 99 characters
+--------------------------------------------------------------------------------
+The story is boring and online is **** Disgusting, I think the most toxic community in video games.
+
+Sample 2 - 97 words, 545 characters
+--------------------------------------------------------------------------------
+I’ve been playing this from launch and I can honestly say it’s average. Don’t believe all the praise just because it’s the newest edition in the MK series. MKX was definitely more fun to play. The only great thing this game has going for it is it’s story mode it’s exciting. The worst part has to be the online play it’s poorly balanced and the game mechanics don’t help. It’s just completely screwed when u constantly play the same characters online over and over again and can’t play better because some characters just are better than othera.
+
+Sample 3 - 147 words, 770 characters
+--------------------------------------------------------------------------------
+The game is below average in everything. This means that you will replay even on easy difficulty many times and it will be boring. Controls and shooting are convenient, but simple and crooked. There is no compass, but I didn’t have any problems with it like in Control, except for one place in the 6th and last episode - I had to go back along the road by car and go into some house. The graphics are good in places. An attempt to create a cinematic mysticism with immersion, but the plot is very stupid and boring, the ending is crap. But the plot is presented easily, there is no need to read the notes, thank God... For such a weak plot and characters, the game is too long, about 12 hours. Alan Weak. I’ll read about the DLC on the Internet and of course won’t play.
+
+Sample 4 - 204 words, 1085 characters
+--------------------------------------------------------------------------------
+If you were ever wondering what Resident Evil and Call of Duty were like had they been combined at birth, this would be it. A run and gun that focused less on the survival part of a Resident Evil game. Instead they traded those scares and Survival moments for Quick Time Events and Repetitive Story lines. Though the different vantage points of the game through multiple story lines seemed interesting in theory. Actually playing this game 10 hours a story and then playing a different character with the same out come sadly got to be a bit much. I was happy to return to the series and see lots of missed and loved faces. That was nice By the end of the game I kind of just wanted the whole thing to be over. Which is unfortunate, I think this sits as the worst game in the numbered franchise. Had nice Visual Effects and like the route they were taking with the infected in this. ALSO - Kinda bothered me that no matter what you did, certain outcomes remained the same way, Not sure if that was canonical or if they retconned it later. but kinda hard to come back from In my opinion.
+
+Sample 5 - 259 words, 1391 characters
+--------------------------------------------------------------------------------
+Certainly the worst Fifa to date! 5 minutes into playing the game you might say to yourself hmm this looks great. Unfortunately unlike many good games fifa 15 gets worse the more you play it. Lets start with the never ending glitches on online play, scoreboard always glitched 2/3 times you start a match your opponent is marked as the same team as yourself, Nat type glitch, not sure if you noticed but if you are eve rejected play due to nat type make sure you go right back to the main menu before joining a new game. iIf you dont player updates wont get placed into the next game, substitute glitches, the sub info in game gets stuck and stays there until the next sub, so if you dont sub for 100 games there it will stay, ive have a bayern sub info board stuck for 5 games, very annoying, then there are the endless in play gltiches from players colliding, giving away penalties and completely veering off in the wrong direction. Apart from the above the game also feels massively bias, il tell you from now if you don't play with Barca of RM you likely wont enjoy the game, from unrealistic stats to what appears to be bias referring. Not sure what EA was trying to do here but i haven't seen average customers review above 6, its clear this game was a major flop. Unfortunately due to EA contract on FIFA they will continue to produce such abominations! guess its time to move to PES!
+
+
+================================================================================
+MIXED REVIEW SAMPLES
+================================================================================
+
+Sample 1 - 88 words, 451 characters
+Positive indicators: 1, Negative indicators: 1, Contrast words: 1
+--------------------------------------------------------------------------------
+It was one of the fathers of RTS video games. It was so innovative for 1997, but even being such an historical partof video games it had its problems.. I played it first in 2004 after playing Empire Earth, Age of Empires II... and it was boring for me, and I'm certain it was because of having played newer RTS video games, but still I didn't have a good feeling playing it. I understand how important it was for the industry tho, so I give it a 7/10.
+
+Sample 2 - 119 words, 677 characters
+Positive indicators: 1, Negative indicators: 1, Contrast words: 2
+--------------------------------------------------------------------------------
+Liberation HD is a solid game overall! I enjoyed the costume change mechanic. The game flows pretty well for what it is; a transition title to test out the mechanics for Black Flag. Aveline is a much more interesting character than Conner and proves to be a much more compelling narrative than ACIII. (Although I didn't HATE Conner and did enjoy ACIII's setting and gameplay) As for story length and content its a shorter than your standard AC game. That and it lacks some of the extra things like controlling other assassins and doing crypts. Honestly, the game is long enough that by the time you get bored with playing it, you've done everything. Which is really just right.
+
+Sample 3 - 152 words, 813 characters
+Positive indicators: 3, Negative indicators: 1, Contrast words: 2
+--------------------------------------------------------------------------------
+The game looks great. The graphics, ray tracing are great on the PS5. The combat is enjoyable, the swinging is great, the city is fun to move around. But the rest of it is just plain boring. The story with the Tinkerer, the Underground and Roxxon is bland AF. The Tinkerer just does not make sense - WTF kind of God of War technology is that? There is a bunch of cringe in the story. Miles in this game is nowhere as interesting as Miles from Into the Spider-verse. The dialogue between Miles and Ganke and Miles and Holo-Peter is constantly cringe and I guess aimed at 6 year olds. The final mission just would not end. Same for the penultimate mission with Rhino. Everyone's saying the game is too short but I thought it was just too long. To be honest, this is just a different kind of corporate, AAA cashgrab.
+
+Sample 4 - 181 words, 981 characters
+Positive indicators: 2, Negative indicators: 1, Contrast words: 2
+--------------------------------------------------------------------------------
+Crysis 3 feels like it was all made for the crossbow, since it's the sole new thing they added, and the only equipment you will ever need through the whole campaign, Gameplay feels dull and empty, All i was doing is get cloaked, Kill some enemies with the crossbow (while still invisible), Go back behind cover to charge the nano-suit, and repeat the cycle, Ya doing that, and using the crossbow, was actually fun, but after a short while it gets boring and repetitive.. i barely finished that game, the ending was worth it though, it was epic, But still the peak point at the final mission was just as boring as the rest of the game and even more, Even with the intense sound track and fancy flashy visual it was still a very tedious mission. And the story, the story is actually just another aliens cliche, Crytek is trying disparately to make it look somehow unique and special, but truth is, it has a dumb cliche plot.. I'd give it 4/10 but one more point for the great ending.
+
+Sample 5 - 225 words, 1199 characters
+Positive indicators: 2, Negative indicators: 0, Contrast words: 1
+--------------------------------------------------------------------------------
+It's too easy to just say the game **** and throw up a 0 so I'll try to be a bit more fair and elaborate on why I'm giving it a 5... I'll start with the good, or rather the "okay". The gameplay itself is fine. Guns feel good, sounds are good, vehicles are good. I love the ability to swap scopes and mids while in gameThe problem is while the core gameplay elements are good, there's no WOW factor. You would hope that the first BF game released for next gen would have it, and sadly it just doesn't. I want to love this game, I've tried playing it for the past few days hoping it would grow on me, but it just hasn't. My biggest complaints revolve around the general interface, menu system, navigation elements, controls, and the maps. For starters, there's really only 3 game modes. I know that's not all that different from previous years, but they need to bring back more centralized objective based game modes. Conquest is what it is, a playground for vehicular warfare. Personally that's not my my cup of tea. I love the vehicles, but the maps are so large and the objectives so spaced out that if you don't have a vehicle, your going to be running around for awhile before you see any action.
+
