@@ -371,48 +371,103 @@ class XGBoostSentimentClassifier:
         print(f"  - {config_file.name}")
 
 
-def evaluate_classifier(model, X, y, split_name="Test", use_wandb=False, texts=None, output_dir=None):
-    """Evaluate classifier and return metrics. Raw outputs are always saved if output_dir and texts are provided."""
+def evaluate_classifier(model, texts, labels, split_name="Test", use_wandb=False, output_dir=None,
+                       embedding_model=None, tokenizer=None, max_length=512, batch_size=32):
+    """Evaluate classifier with end-to-end inference timing (embedding generation + XGBoost prediction).
+    
+    Args:
+        model: Trained XGBoost classifier
+        texts: List of text samples (required for embedding generation)
+        labels: True labels
+        split_name: Name of the split for display
+        use_wandb: Whether to log to WandB
+        output_dir: Directory to save raw outputs
+        embedding_model: BGE-M3 model for generating embeddings
+        tokenizer: BGE-M3 tokenizer
+        max_length: Max sequence length for tokenization
+        batch_size: Batch size for embedding generation
+        
+    Returns:
+        Dictionary containing all evaluation metrics
+    """
     from model_phase.utilities import save_raw_outputs
+    import torch
     
     print(f"\n{'='*60}")
     print(f"Evaluating on {split_name} set")
     print(f"{'='*60}")
     
-    # Predict once and reuse for both raw outputs and metrics
-    start_time = time.time()
-    predictions = model.predict(X)
-    inference_time = time.time() - start_time
+    if embedding_model is None or tokenizer is None:
+        raise ValueError("embedding_model and tokenizer are required for inference timing measurement")
     
-    # Always save raw outputs if output_dir and texts are provided
-    if output_dir and texts is not None:
+    # Start timing for full inference pipeline
+    total_start = time.time()
+    
+    # Step 1: Generate BGE-M3 embeddings
+    embedding_start = time.time()
+    device = next(embedding_model.parameters()).device
+    embeddings_list = []
+    
+    print(f"Generating embeddings for {len(texts)} samples...")
+    for i in range(0, len(texts), batch_size):
+        batch_texts = texts[i:i + batch_size]
+        
+        # Tokenize
+        inputs = tokenizer(
+            batch_texts,
+            padding=True,
+            truncation=True,
+            max_length=max_length,
+            return_tensors='pt'
+        ).to(device)
+        
+        # Generate embeddings
+        with torch.no_grad():
+            outputs = embedding_model(**inputs)
+            # Use CLS token embedding
+            batch_embeddings = outputs.last_hidden_state[:, 0, :].cpu().numpy()
+            embeddings_list.append(batch_embeddings)
+    
+    X = np.vstack(embeddings_list)
+    embedding_time = time.time() - embedding_start
+    
+    # Step 2: XGBoost prediction
+    xgboost_start = time.time()
+    predictions = model.predict(X)
+    xgboost_time = time.time() - xgboost_start
+    
+    # Total inference time
+    inference_time = time.time() - total_start
+    
+    # Always save raw outputs if output_dir is provided
+    if output_dir:
         output_dir = Path(output_dir)
         raw_output_file = output_dir / f'raw_outputs_{split_name.lower()}.jsonl'
-        save_raw_outputs(texts, predictions, y, raw_output_file, split_name)
+        save_raw_outputs(texts, predictions, labels, raw_output_file, split_name)
     
     # Calculate metrics
-    accuracy = accuracy_score(y, predictions)
+    accuracy = accuracy_score(labels, predictions)
     precision, recall, f1, _ = precision_recall_fscore_support(
-        y, predictions, average='weighted', zero_division=0
+        labels, predictions, average='weighted', zero_division=0
     )
     
     # Per-class metrics
     class_report = classification_report(
-        y, predictions, output_dict=True, zero_division=0
+        labels, predictions, output_dict=True, zero_division=0
     )
     
     # Confusion matrix
-    unique_labels = sorted(set(y) | set(predictions))
-    cm = confusion_matrix(y, predictions, labels=unique_labels)
+    unique_labels = sorted(set(labels) | set(predictions))
+    cm = confusion_matrix(labels, predictions, labels=unique_labels)
     
-    # Print results
+    # Print results with timing breakdown
     print(f"\n{split_name} Results:")
     print(f"  Accuracy: {accuracy:.4f}")
     print(f"  Precision: {precision:.4f}")
     print(f"  Recall: {recall:.4f}")
     print(f"  F1-score: {f1:.4f}")
-    print(f"  Inference time: {inference_time:.2f}s")
-    print(f"  Samples/second: {len(y)/inference_time:.2f}")
+    print(f"  Inference time: {inference_time:.2f}s (Embedding: {embedding_time:.2f}s | XGBoost: {xgboost_time:.2f}s)")
+    print(f"  Samples/second: {len(labels)/inference_time:.2f}")
     
     # Log to wandb
     if use_wandb and WANDB_AVAILABLE:
@@ -423,14 +478,16 @@ def evaluate_classifier(model, X, y, split_name="Test", use_wandb=False, texts=N
             f'{split_name.lower()}_f1': f1,
         })
     
-    # Compile results
+    # Compile results with timing breakdown
     results = {
         f'{split_name.lower()}_accuracy': float(accuracy),
         f'{split_name.lower()}_precision': float(precision),
         f'{split_name.lower()}_recall': float(recall),
         f'{split_name.lower()}_f1': float(f1),
         f'{split_name.lower()}_inference_time': float(inference_time),
-        f'{split_name.lower()}_samples_per_second': float(len(y)/inference_time),
+        f'{split_name.lower()}_embedding_time': float(embedding_time),
+        f'{split_name.lower()}_xgboost_time': float(xgboost_time),
+        f'{split_name.lower()}_samples_per_second': float(len(labels)/inference_time),
         f'{split_name.lower()}_classification_report': class_report,
         f'{split_name.lower()}_confusion_matrix': cm.tolist()
     }
@@ -755,28 +812,25 @@ def main(checkpoint_dir,
     X_val, y_val = loader.load_embeddings('validation', subset_percentage=subset)
     X_test, y_test = loader.load_embeddings('test', subset_percentage=subset)
     
-    # Load raw texts for raw output saving
+    # Load raw texts for inference timing (REQUIRED)
     # Get dataset name from checkpoint metadata or use provided dataset_name
     checkpoint_dataset_name = loader.state.get('metadata', {}).get('dataset_name')
     dataset_name_to_use = dataset_name or checkpoint_dataset_name or os.getenv('HF_DATASET_NAME')
     
-    texts_val = None
-    texts_test = None
-    if dataset_name_to_use:
-        print(f"\n{'='*60}")
-        print("Loading raw texts for output saving")
-        print(f"{'='*60}")
-        try:
-            from model_phase.utilities import load_dataset_from_hf
-            _, val_data_raw, test_data_raw = load_dataset_from_hf(dataset_name_to_use, subset_percentage=subset)
-            texts_val = val_data_raw['text']
-            texts_test = test_data_raw['text']
-            print(f"✓ Loaded {len(texts_val)} validation texts and {len(texts_test)} test texts")
-        except Exception as e:
-            print(f"⚠️  Could not load raw texts: {e}")
-            print("   Raw outputs will not include text content")
-    else:
-        print("\n⚠️  No dataset name available, skipping raw text loading")
+    if not dataset_name_to_use:
+        raise ValueError(
+            "Dataset name is required for inference timing measurement.\n"
+            "Please provide --dataset argument or set HF_DATASET_NAME in .env file."
+        )
+    
+    print(f"\n{'='*60}")
+    print("Loading raw texts for inference timing")
+    print(f"{'='*60}")
+    from model_phase.utilities import load_dataset_from_hf
+    _, val_data_raw, test_data_raw = load_dataset_from_hf(dataset_name_to_use, subset_percentage=subset)
+    texts_val = val_data_raw['text']
+    texts_test = test_data_raw['text']
+    print(f"✓ Loaded {len(texts_val)} validation texts and {len(texts_test)} test texts")
     
     # Initialize model
     print(f"\n{'='*60}")
@@ -803,15 +857,47 @@ def main(checkpoint_dir,
     
     print(f"\n✓ Training completed in {total_time:.2f}s")
     
+    # Load BGE-M3 model for inference timing
+    print(f"\n{'='*60}")
+    print("Loading BGE-M3 Model for Inference Timing")
+    print(f"{'='*60}")
+    
+    from transformers import AutoModel, AutoTokenizer
+    import torch
+    
+    # Get max_length and batch_size from checkpoint metadata
+    checkpoint_metadata = loader.state.get('metadata', {})
+    embedding_max_length = checkpoint_metadata.get('max_length', 512)
+    embedding_batch_size = checkpoint_metadata.get('batch_size', 32)
+    
+    print(f"Loading BAAI/bge-m3...")
+    embedding_tokenizer = AutoTokenizer.from_pretrained('BAAI/bge-m3')
+    embedding_model = AutoModel.from_pretrained('BAAI/bge-m3')
+    
+    # Move to GPU and set to eval mode
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    embedding_model.to(device)
+    embedding_model.eval()
+    
+    # Freeze all parameters
+    for param in embedding_model.parameters():
+        param.requires_grad = False
+    
+    print(f"✓ BGE-M3 loaded on {device}")
+    print(f"  Using max_length={embedding_max_length}, batch_size={embedding_batch_size}")
+    
     # Evaluate on validation set
     print(f"\n{'='*60}")
     print("Evaluating on Validation Set")
     print(f"{'='*60}")
     val_results = evaluate_classifier(
-        model, X_val, y_val, "Validation",
+        model, texts_val, y_val, "Validation",
         use_wandb=wandb_initialized,
-        texts=texts_val,
-        output_dir=output_dir
+        output_dir=output_dir,
+        embedding_model=embedding_model,
+        tokenizer=embedding_tokenizer,
+        max_length=embedding_max_length,
+        batch_size=embedding_batch_size
     )
     
     # Evaluate on test set (always run - test embeddings are available)
@@ -819,10 +905,13 @@ def main(checkpoint_dir,
     print("Evaluating on Test Set")
     print(f"{'='*60}")
     test_results = evaluate_classifier(
-        model, X_test, y_test, "Test",
+        model, texts_test, y_test, "Test",
         use_wandb=wandb_initialized,
-        texts=texts_test,
-        output_dir=output_dir
+        output_dir=output_dir,
+        embedding_model=embedding_model,
+        tokenizer=embedding_tokenizer,
+        max_length=embedding_max_length,
+        batch_size=embedding_batch_size
     )
     
     # Compile results

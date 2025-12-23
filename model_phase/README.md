@@ -90,16 +90,20 @@ This README contains everything you need. No other documentation files needed.
 - ✅ Checkpoint support - resume from interruptions
 - ✅ Separates embedding generation from training (efficient workflow)
 - ✅ Handles class imbalance automatically
-- ✅ Fast inference once embeddings are generated
 - ⚠️ Requires GPU for efficient embedding generation
 - ⚠️ Initial embedding generation takes time (~1-2 hours)
 
 **Performance Expectations**:
 - **Accuracy**: 80-90%
-- **Embedding Generation**: 1-2 hours (GPU, one-time)
+- **Embedding Generation**: 1-2 hours (GPU, one-time for training)
 - **Training time**: 10-30 minutes (CPU)
-- **Inference speed**: Very fast with cached embeddings
+- **Inference time**: 1-4 seconds per batch (embedding generation 1-3s + XGBoost 0.1-0.5s)
 - **Model size**: ~50-100 MB
+
+**Inference Scenarios**:
+- **Real-time inference**: Requires full pipeline (text → embeddings → XGBoost) = 1-4s per batch
+- **Batch with cached embeddings**: Pre-compute embeddings once, then XGBoost only = 0.1-0.5s per batch
+- **Note**: Training uses pre-computed embeddings for efficiency, but inference timing measures the full text-to-prediction pipeline for fair comparison with RoBERTa/LSTM
 
 ---
 
