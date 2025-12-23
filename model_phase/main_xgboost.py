@@ -285,7 +285,7 @@ class XGBoostSentimentClassifier:
             evals.append((dval, 'val'))
         
         # Train model with early stopping
-        print("\nTraining model with early stopping (patience=50 rounds)...")
+        print("\nTraining model with early stopping (patience=200 rounds)...")
         start_time = time.time()
         
         # Set up early stopping if validation set is available
