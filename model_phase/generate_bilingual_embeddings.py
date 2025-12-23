@@ -27,7 +27,7 @@ sys.path.insert(0, str(project_root))
 
 import numpy as np
 import torch
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset
 from transformers import AutoModel, AutoTokenizer
 
 # Import utilities
@@ -244,7 +244,6 @@ class BilingualEmbeddingGenerator:
             print(f"\n[{stage_name}] Generating embeddings...")
             print(f"  Total samples: {len(texts)}")
             print(f"  Batch size: {self.batch_size}")
-            print(f"  Parallel tokenization: 4 worker processes")
         
         start_time = time.time()
         last_log_time = start_time
@@ -260,51 +259,21 @@ class BilingualEmbeddingGenerator:
             all_embeddings[:len(partial_emb)] = partial_emb
             embeddings = []  # Clear list
         
-        # Create dataset for parallel tokenization
-        class TextDataset(Dataset):
-            def __init__(self, texts, start_idx):
-                self.texts = texts[start_idx:]
-                self.start_idx = start_idx
+        # Create batches
+        for batch_idx, i in enumerate(range(start_idx, len(texts), self.batch_size)):
+            batch_texts = texts[i:i + self.batch_size]
+            batch_end = i + len(batch_texts)
             
-            def __len__(self):
-                return len(self.texts)
-            
-            def __getitem__(self, idx):
-                return self.texts[idx], self.start_idx + idx
-        
-        dataset = TextDataset(texts, start_idx)
-        
-        # Custom collate function for batched tokenization
-        def collate_fn(batch):
-            batch_texts, indices = zip(*batch)
-            # Tokenize batch in worker process (parallel CPU tokenization)
+            # Tokenize on CPU (inevitable, but pipelined with GPU via async transfer)
             inputs = self.tokenizer(
-                list(batch_texts),
+                batch_texts,
                 padding=True,
                 truncation=True,
                 max_length=self.max_length,
                 return_tensors='pt'
             )
-            return inputs, list(indices)
-        
-        # DataLoader with parallel workers for tokenization
-        # num_workers=4 means 4 CPU cores tokenize in parallel while GPU processes
-        dataloader = DataLoader(
-            dataset,
-            batch_size=self.batch_size,
-            shuffle=False,
-            num_workers=4,  # Parallel tokenization
-            pin_memory=True,  # Faster CPU->GPU transfer
-            collate_fn=collate_fn,
-            prefetch_factor=2  # Prefetch 2 batches per worker
-        )
-        
-        # Process batches with parallel tokenization
-        for batch_idx, (inputs, indices) in enumerate(dataloader):
-            batch_start_idx = indices[0]
-            batch_end_idx = indices[-1] + 1
             
-            # Move to GPU (already tokenized by worker process)
+            # Move to GPU with non_blocking for async transfer (overlaps with previous GPU work)
             inputs = {k: v.to(self.device, non_blocking=True) for k, v in inputs.items()}
             
             # Generate embeddings with conditional mixed precision
@@ -321,15 +290,16 @@ class BilingualEmbeddingGenerator:
                 all_embeddings = np.empty((len(texts), embedding_dim), dtype=np.float32)
                 print(f"  Detected embedding dimension: {embedding_dim}")
             
-            # Immediate GPU-to-CPU transfer
-            all_embeddings[batch_start_idx:batch_end_idx] = batch_embeddings.cpu().numpy()
+            # Immediate GPU-to-CPU transfer (batching didn't help - sync overhead was not the bottleneck)
+            # Move to CPU immediately to free GPU memory for next batch
+            all_embeddings[i:batch_end] = batch_embeddings.cpu().numpy()
             
             # Explicit cleanup - free GPU memory immediately
             del batch_embeddings, outputs, inputs
             if batch_idx % 50 == 0:  # Clear cache every 50 batches to prevent fragmentation
                 torch.cuda.empty_cache()
             
-            processed = batch_end_idx
+            processed = batch_end
             current_time = time.time()
             
             # Progress logging - only every 5 seconds or at completion to reduce overhead
