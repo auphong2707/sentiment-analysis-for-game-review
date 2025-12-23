@@ -2,21 +2,40 @@
 
 This folder contains machine learning models for sentiment analysis on game reviews.
 
-## � Quick Start (Recommended)
+## 🚀 Quick Start (Recommended)
+
+### BGE-M3 + XGBoost (Best Performance)
+
+**Two-step pipeline for state-of-the-art results:**
+
+**Step 1: Generate BGE-M3 Embeddings**
+```bash
+# Generate embeddings once, reuse for multiple classifiers
+bash model_phase/generate_embeddings.sh --dataset username/game-reviews-sentiment
+```
+
+**Step 2: Train XGBoost Classifier**
+```bash
+# Train XGBoost with automatic hyperparameter tuning
+bash model_phase/train_xgboost.sh --checkpoint_dir model_phase/results/bge_m3_embeddings/checkpoints
+```
+
+This pipeline:
+1. Generates BGE-M3 embeddings with checkpoint support (resumable)
+2. Runs grid search on 10% data to find best XGBoost hyperparameters
+3. Trains final model on 100% data with optimal settings
+4. Uploads final model to HuggingFace Hub
+
+**Time**: ~2-4 hours (GPU) | **Result**: Production-ready model on HuggingFace
+
+---
+
+### TF-IDF Baseline (Fast & Simple)
 
 **Run the complete automated pipeline:**
 
-```powershell
-# Windows (uses dataset from .env by default)
-.\model_phase\train_tfidf_baseline.ps1
-
-# Or specify dataset explicitly
-.\model_phase\train_tfidf_baseline.ps1 -Dataset "username/game-reviews-sentiment"
-
+```bash
 # Linux (uses dataset from .env by default)
-bash model_phase/train_tfidf_baseline.sh
-
-# Or specify dataset explicitly
 bash model_phase/train_tfidf_baseline.sh --dataset username/game-reviews-sentiment
 ```
 
@@ -25,7 +44,7 @@ This single command will:
 2. Train final model on 100% data with optimal settings
 3. Upload final model to HuggingFace Hub
 
-**Time**: ~8-15 minutes | **Result**: Production-ready model on HuggingFace
+**Time**: ~8-15 minutes | **Result**: Production-ready baseline model
 
 ---
 
@@ -38,18 +57,51 @@ This README contains everything you need. No other documentation files needed.
 ## 📖 Table of Contents
 
 - [Quick Start](#-quick-start-recommended)
+  - [BGE-M3 + XGBoost (Best Performance)](#bge-m3--xgboost-best-performance)
+  - [TF-IDF Baseline (Fast & Simple)](#tf-idf-baseline-fast--simple)
 - [Models](#models)
-- [Complete Pipeline](#complete-pipeline-automated)
-- [Grid Search Only](#grid-search-only)
-- [Manual Training](#manual-training)
+  - [BGE-M3 + XGBoost](#bge-m3--xgboost)
+  - [TF-IDF + Logistic Regression](#baseline-tf-idf--logistic-regression)
+- [BGE-M3 + XGBoost Workflow](#bge-m3--xgboost-workflow)
+  - [Step 1: Generate Embeddings](#step-1-generate-embeddings)
+  - [Step 2: Train XGBoost](#step-2-train-xgboost)
+- [TF-IDF Complete Pipeline](#tfidf-complete-pipeline-automated)
 - [Command-Line Arguments](#command-line-arguments)
 - [Output Structure](#output)
-- [Usage Examples](#usage-examples)
-- [Troubleshooting](#troubleshooting)
+- [Archive](#archive)
 
 ---
 
 ## Models
+
+### BGE-M3 + XGBoost
+
+**Files**: `generate_bge_m3_embeddings.py`, `main_xgboost.py`
+
+**Core Idea**: Use state-of-the-art embeddings from BGE-M3 (a powerful multilingual text encoder) combined with XGBoost gradient boosting for classification.
+
+**How it Works**:
+- **Step 1**: BGE-M3 generates dense 1024-dimensional embeddings that capture semantic meaning
+- **Step 2**: XGBoost trains a gradient-boosted tree classifier on these embeddings
+- Embeddings are generated once and cached, then reused for multiple experiments
+
+**Key Features**:
+- ✅ State-of-the-art performance with deep semantic understanding
+- ✅ Checkpoint support - resume from interruptions
+- ✅ Separates embedding generation from training (efficient workflow)
+- ✅ Handles class imbalance automatically
+- ✅ Fast inference once embeddings are generated
+- ⚠️ Requires GPU for efficient embedding generation
+- ⚠️ Initial embedding generation takes time (~1-2 hours)
+
+**Performance Expectations**:
+- **Accuracy**: 80-90%
+- **Embedding Generation**: 1-2 hours (GPU, one-time)
+- **Training time**: 10-30 minutes (CPU)
+- **Inference speed**: Very fast with cached embeddings
+- **Model size**: ~50-100 MB
+
+---
 
 ### Baseline: TF-IDF + Logistic Regression
 
@@ -71,7 +123,113 @@ This README contains everything you need. No other documentation files needed.
 
 ---
 
-## Complete Pipeline (Automated)
+## BGE-M3 + XGBoost Workflow
+
+### Step 1: Generate Embeddings
+
+Generate BGE-M3 embeddings once, then reuse them for multiple experiments.
+
+**Basic Usage:**
+```bash
+bash model_phase/generate_embeddings.sh --dataset username/game-reviews-sentiment
+```
+
+**With Options:**
+```bash
+bash model_phase/generate_embeddings.sh \
+    --dataset username/game-reviews-sentiment \
+    --batch_size 64 \
+    --max_length 512 \
+    --subset 1.0 \
+    --experiment_name my_embeddings \
+    --use_wandb
+```
+
+**What It Does:**
+- Loads BGE-M3 model (`BAAI/bge-m3`)
+- Generates 1024-dimensional embeddings for train/val/test splits
+- Saves embeddings as `.npz` files in checkpoint directory
+- Supports incremental checkpointing (saves every 100 batches)
+- Can resume from interruptions
+
+**Output:**
+```
+model_phase/results/bge_m3_embeddings/checkpoints/
+├── checkpoint_state.json
+├── train_embeddings_embeddings.npz
+├── validation_embeddings_embeddings.npz
+└── test_embeddings_embeddings.npz
+```
+
+**Arguments:**
+- `--dataset` - HuggingFace dataset name (required)
+- `--batch_size` - Batch size for embedding generation (default: 64)
+- `--max_length` - Max sequence length (default: 512)
+- `--subset` - Fraction of data to use (default: 1.0)
+- `--experiment_name` - Custom name for outputs
+- `--use_wandb` - Enable WandB logging
+
+---
+
+### Step 2: Train XGBoost
+
+Train XGBoost classifier using pre-computed embeddings.
+
+**Basic Usage:**
+```bash
+bash model_phase/train_xgboost.sh --checkpoint_dir model_phase/results/bge_m3_embeddings/checkpoints
+```
+
+**With Options:**
+```bash
+bash model_phase/train_xgboost.sh \
+    --checkpoint_dir model_phase/results/bge_m3_embeddings/checkpoints \
+    --gridsearch_subset 0.1 \
+    --final_subset 1.0 \
+    --use_wandb
+```
+
+**What It Does:**
+1. **Grid Search** (10-20 min on 10% data)
+   - Tests combinations of hyperparameters:
+     - `learning_rate`: 0.05, 0.1, 0.15
+     - `n_estimators`: 2000, 2500, 3000
+     - `max_depth`: 4, 6, 8
+     - `min_child_weight`: 1, 3, 5
+   - Optimizes for F1-Macro (balanced across classes)
+   
+2. **Extract Best Config** (<1 sec)
+   - Automatically parses best hyperparameters
+   
+3. **Final Training** (10-30 min on 100% data)
+   - Trains with best config
+   - Applies balanced class weights
+   - Early stopping with 200 rounds patience
+   - Evaluates on test set
+   - **Uploads to HuggingFace Hub**
+
+**Output:**
+```
+model_phase/results/xgboost_lr0.1_n2500_d6_mcw3/
+├── xgboost_model.json
+├── label_encoder.pkl
+├── config.json
+├── results.json
+├── raw_outputs_validation.jsonl
+└── raw_outputs_test.jsonl
+```
+
+**Arguments:**
+- `--checkpoint_dir` - Path to embeddings checkpoint (required)
+- `--dataset` - HuggingFace dataset for metadata (optional)
+- `--gridsearch_subset` - Fraction for grid search (default: 0.1)
+- `--final_subset` - Fraction for final training (default: 1.0)
+- `--use_wandb` - Enable WandB logging
+- `--skip_gridsearch` - Skip grid search if already done
+
+---
+
+## TF-IDF Complete Pipeline (Automated)
 
 The complete pipeline automates everything from hyperparameter search to final model deployment.
 
@@ -544,7 +702,17 @@ After establishing the baseline:
 
 ## Dependencies
 
-Minimal requirements:
+### BGE-M3 + XGBoost Requirements:
+```
+torch>=2.0.0
+transformers>=4.30.0
+xgboost>=2.0.0
+scikit-learn>=1.3.0
+datasets>=2.14.0
+numpy>=1.24.0
+```
+
+### TF-IDF Baseline Requirements:
 ```
 scikit-learn>=1.3.0
 datasets>=2.14.0
@@ -553,7 +721,7 @@ pandas>=2.0.0
 tqdm>=4.66.0
 ```
 
-Optional:
+### Optional:
 ```
 wandb>=0.16.0  # For experiment tracking
 ```
@@ -564,16 +732,61 @@ wandb>=0.16.0  # For experiment tracking
 
 ```
 model_phase/
-├── main_tfidf_baseline.py       # Main training script
-├── utilities.py                 # Utility functions
-├── train_tfidf_baseline.ps1    # Complete pipeline (Windows)
-├── train_tfidf_baseline.sh     # Complete pipeline (Linux)
-├── README.md                    # This file
-└── results/                     # Training results
-    ├── tfidf_baseline_*/        # Single training runs
-    └── gridsearch/              # Grid search results
+├── generate_bge_m3_embeddings.py  # BGE-M3 embedding generation
+├── main_xgboost.py                # XGBoost training
+├── main_tfidf_baseline.py         # TF-IDF baseline
+├── utilities.py                   # Shared utility functions
+├── generate_embeddings.sh         # BGE-M3 embedding pipeline
+├── train_xgboost.sh               # XGBoost training pipeline
+├── train_bge_m3.sh                # Legacy: BGE-M3 + SVM (archived)
+├── train_tfidf_baseline.sh        # TF-IDF baseline pipeline
+├── README.md                      # This file
+├── archive/                       # Archived scripts
+│   ├── main_bge_m3.py            # BGE-M3 + SVM (no checkpoints)
+│   └── main_bge_m3_checkpoint.py # BGE-M3 + SVM (with checkpoints)
+└── results/                       # Training results
+    ├── bge_m3_embeddings/        # BGE-M3 embedding outputs
+    ├── xgboost_*/                # XGBoost training runs
+    ├── tfidf_baseline_*/         # TF-IDF training runs
+    └── gridsearch*/              # Grid search results
 ```
 
 ---
 
-**A simple, fast, and interpretable baseline for sentiment analysis!** 🚀
+## Archive
+
+### Archived: BGE-M3 + SVM Implementation
+
+The original BGE-M3 implementation used SVM as the classifier. This has been archived in favor of the cleaner two-script workflow with XGBoost.
+
+**Archived Files:**
+- `archive/main_bge_m3.py` - Original BGE-M3 + SVM (no checkpoints)
+- `archive/main_bge_m3_checkpoint.py` - BGE-M3 + SVM with checkpoint support
+- `train_bge_m3.sh` - Shell script for BGE-M3 + SVM training
+
+**Why Archived:**
+- Mixed embedding generation with classifier training in single script
+- SVM training was computationally expensive (~30-60 minutes)
+- Difficult to experiment with different classifiers
+- XGBoost provides better performance with faster training
+
+**Migration to New Workflow:**
+The new workflow separates concerns:
+1. **Embedding Generation** (`generate_bge_m3_embeddings.py`) - Generate embeddings once
+2. **Classifier Training** (`main_xgboost.py`) - Train XGBoost on cached embeddings
+
+This allows:
+- Reusing embeddings for multiple experiments
+- Faster iteration on classifier hyperparameters
+- Better separation of concerns
+- Easier maintenance
+
+**To use archived scripts:**
+```bash
+# Still functional but not recommended
+bash model_phase/train_bge_m3.sh --dataset username/game-reviews-sentiment
+```
+
+---
+
+**Simple baselines to state-of-the-art models for sentiment analysis!** 🚀

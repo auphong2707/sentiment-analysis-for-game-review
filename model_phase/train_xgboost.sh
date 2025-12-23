@@ -133,7 +133,7 @@ if [ "$SKIP_GRIDSEARCH" = false ]; then
     GRIDSEARCH_DIR="$OUTPUT_BASE_DIR/gridsearch_xgboost"
     
     # Build grid search command
-    GRIDSEARCH_CMD="python model_phase/main_xgboost_from_checkpoint.py \
+    GRIDSEARCH_CMD="python model_phase/main_xgboost.py \
         --grid_search \
         --checkpoint_dir $CHECKPOINT_DIR \
         --subset $GRIDSEARCH_SUBSET \
@@ -238,7 +238,7 @@ echo ""
 FINAL_EXPERIMENT_NAME="xgboost_lr${BEST_LEARNING_RATE}_n${BEST_N_ESTIMATORS}_d${BEST_MAX_DEPTH}_mcw${BEST_MIN_CHILD_WEIGHT}"
 
 # Build final training command
-FINAL_CMD="python model_phase/main_xgboost_from_checkpoint.py \
+FINAL_CMD="python model_phase/main_xgboost.py \
     --checkpoint_dir $CHECKPOINT_DIR \
     --learning_rate $BEST_LEARNING_RATE \
     --n_estimators $BEST_N_ESTIMATORS \
