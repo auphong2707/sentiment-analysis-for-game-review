@@ -162,7 +162,8 @@ class XGBoostSentimentClassifier:
                  reg_lambda=1.0,
                  random_state=42,
                  use_gpu=True,
-                 objective='multi:softprob'):
+                 objective='multi:softprob',
+                 early_stopping_rounds=200):
         """
         Initialize XGBoost classifier.
         
@@ -178,6 +179,7 @@ class XGBoostSentimentClassifier:
             reg_lambda: L2 regularization term on weights
             random_state: Random seed
             use_gpu: Whether to use GPU for training
+            early_stopping_rounds: Early stopping patience (default 200)
         """
         self.n_estimators = n_estimators
         self.max_depth = max_depth
@@ -191,6 +193,7 @@ class XGBoostSentimentClassifier:
         self.random_state = random_state
         self.use_gpu = use_gpu
         self.objective = objective
+        self.early_stopping_rounds = early_stopping_rounds
         
         self.model = None
         self.label_encoder = None
@@ -285,11 +288,11 @@ class XGBoostSentimentClassifier:
             evals.append((dval, 'val'))
         
         # Train model with early stopping
-        print("\nTraining model with early stopping (patience=200 rounds)...")
+        print(f"\nTraining model with early stopping (patience={self.early_stopping_rounds} rounds)...")
         start_time = time.time()
         
         # Set up early stopping if validation set is available
-        early_stopping_rounds = 200 if X_val is not None else None
+        early_stopping_rounds = self.early_stopping_rounds if X_val is not None else None
         
         self.model = xgb.train(
             params,
@@ -576,7 +579,8 @@ def run_grid_search(checkpoint_dir,
             subsample=ss,
             colsample_bytree=colsample,
             reg_lambda=reg_l,
-            objective='multi:softprob'
+            objective='multi:softprob',
+            early_stopping_rounds=100  # More aggressive early stopping for grid search
         )
         
         train_time = model.fit(X_train, y_train, X_val, y_val)
