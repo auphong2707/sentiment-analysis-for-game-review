@@ -264,6 +264,10 @@ class BilingualEmbeddingGenerator:
             batch_texts = texts[i:i + self.batch_size]
             batch_end = i + len(batch_texts)
             
+            # Profiling for first 10 batches
+            if batch_idx < 10:
+                t_start = time.time()
+            
             # Tokenize on CPU (inevitable, but pipelined with GPU via async transfer)
             inputs = self.tokenizer(
                 batch_texts,
@@ -276,6 +280,10 @@ class BilingualEmbeddingGenerator:
             # Move to GPU with non_blocking for async transfer (overlaps with previous GPU work)
             inputs = {k: v.to(self.device, non_blocking=True) for k, v in inputs.items()}
             
+            # Profiling checkpoint after tokenization
+            if batch_idx < 10:
+                t_after_tokenize = time.time()
+            
             # Generate embeddings with conditional mixed precision
             with torch.inference_mode():
                 # Only use autocast for Volta+ GPUs (V100, A100) - P100 runs faster without it
@@ -283,6 +291,11 @@ class BilingualEmbeddingGenerator:
                     outputs = self.embedding_model(**inputs)
                     # Use CLS token embedding - detach to free computation graph immediately
                     batch_embeddings = outputs.last_hidden_state[:, 0, :].float().detach()
+            
+            # Profiling checkpoint after inference (sync GPU to measure actual time)
+            if batch_idx < 10:
+                torch.cuda.synchronize()
+                t_after_inference = time.time()
             
             # Detect embedding dimension from first batch and allocate array
             if all_embeddings is None:
@@ -294,10 +307,26 @@ class BilingualEmbeddingGenerator:
             # Move to CPU immediately to free GPU memory for next batch
             all_embeddings[i:batch_end] = batch_embeddings.cpu().numpy()
             
+            # Profiling checkpoint after CPU transfer
+            if batch_idx < 10:
+                t_after_transfer = time.time()
+            
             # Explicit cleanup - free GPU memory immediately
             del batch_embeddings, outputs, inputs
             if batch_idx % 50 == 0:  # Clear cache every 50 batches to prevent fragmentation
                 torch.cuda.empty_cache()
+            
+            # Profiling: Print detailed timing for first 10 batches
+            if batch_idx < 10:
+                t_after_cleanup = time.time()
+                tokenize_ms = (t_after_tokenize - t_start) * 1000
+                inference_ms = (t_after_inference - t_after_tokenize) * 1000
+                transfer_ms = (t_after_transfer - t_after_inference) * 1000
+                cleanup_ms = (t_after_cleanup - t_after_transfer) * 1000
+                total_ms = (t_after_cleanup - t_start) * 1000
+                print(f"    [PROFILE Batch {batch_idx}] Total: {total_ms:.1f}ms | "
+                      f"Tokenize: {tokenize_ms:.1f}ms | Inference: {inference_ms:.1f}ms | "
+                      f"Transfer: {transfer_ms:.1f}ms | Cleanup: {cleanup_ms:.1f}ms")
             
             processed = batch_end
             current_time = time.time()
