@@ -223,7 +223,9 @@ class RoBERTaSentimentClassifier:
             model_name_to_load,
             num_labels=self.num_labels,
             label2id=label2id,
-            id2label=id2label
+            id2label=id2label,
+            attn_implementation="flash_attention_2",
+            torch_dtype=torch.float16
         )
     
     def compute_metrics(self, eval_pred):
@@ -510,7 +512,11 @@ class RoBERTaSentimentClassifier:
         )
         
         model.tokenizer = AutoTokenizer.from_pretrained(output_dir / 'tokenizer', use_fast=True)
-        model.model = RobertaForSequenceClassification.from_pretrained(output_dir / 'model')
+        model.model = RobertaForSequenceClassification.from_pretrained(
+            output_dir / 'model',
+            attn_implementation="flash_attention_2",
+            torch_dtype=torch.float16
+        )
         model.model.to(model.device)
         model.label2id = config['label2id']
         model.id2label = {int(k): v for k, v in config['id2label'].items()}

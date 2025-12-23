@@ -186,7 +186,11 @@ class BGEM3EmbeddingGenerator:
             clean_up_tokenization_spaces=True,
             use_fast=True
         )
-        self.embedding_model = AutoModel.from_pretrained(self.model_name)
+        self.embedding_model = AutoModel.from_pretrained(
+            self.model_name,
+            attn_implementation="flash_attention_2",
+            torch_dtype=torch.float16
+        )
         self.embedding_model.to(self.device)
         self.embedding_model.eval()  # Freeze embedding model
         
