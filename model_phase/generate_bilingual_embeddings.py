@@ -45,7 +45,7 @@ except ImportError:
     WANDB_AVAILABLE = False
     wandb = None
 
-MODEL_NAME = 'Lajavaness/bilingual-embedding-base'
+MODEL_NAME = 'Lajavaness/bilingual-embedding-small'
 
 
 class CheckpointManager:
