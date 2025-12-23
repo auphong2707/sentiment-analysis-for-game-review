@@ -398,8 +398,8 @@ class LSTMSentimentClassifier:
                         best_val_f1 = val_f1
                         
                         # Save checkpoint
-                        if output_dir is not None:
-                            checkpoint_dir = Path(output_dir) / 'checkpoints'
+                        if self.output_dir is not None:
+                            checkpoint_dir = Path(self.output_dir) / 'checkpoints'
                             checkpoint_dir.mkdir(parents=True, exist_ok=True)
                             
                             checkpoint_path = checkpoint_dir / f'checkpoint_step_{global_step}_f1_{val_f1:.4f}.pt'
