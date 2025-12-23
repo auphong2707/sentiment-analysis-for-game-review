@@ -184,9 +184,10 @@ class BilingualEmbeddingGenerator:
         self.tokenizer = AutoTokenizer.from_pretrained(
             self.model_name,
             clean_up_tokenization_spaces=True,
-            use_fast=True
+            use_fast=True,
+            trust_remote_code=True
         )
-        self.embedding_model = AutoModel.from_pretrained(self.model_name)
+        self.embedding_model = AutoModel.from_pretrained(self.model_name, trust_remote_code=True)
         self.embedding_model.to(self.device)
         self.embedding_model.eval()  # Freeze embedding model
         

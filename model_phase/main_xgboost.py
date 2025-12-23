@@ -871,8 +871,8 @@ def main(checkpoint_dir,
     embedding_batch_size = checkpoint_metadata.get('batch_size', 32)
     
     print(f"Loading Lajavaness/bilingual-embedding-base...")
-    embedding_tokenizer = AutoTokenizer.from_pretrained('Lajavaness/bilingual-embedding-base')
-    embedding_model = AutoModel.from_pretrained('Lajavaness/bilingual-embedding-base')
+    embedding_tokenizer = AutoTokenizer.from_pretrained('Lajavaness/bilingual-embedding-base', trust_remote_code=True)
+    embedding_model = AutoModel.from_pretrained('Lajavaness/bilingual-embedding-base', trust_remote_code=True)
     
     # Move to GPU and set to eval mode
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
