@@ -27,7 +27,7 @@ sys.path.insert(0, str(project_root))
 
 import numpy as np
 import torch
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, DataLoader
 from transformers import AutoModel, AutoTokenizer
 
 # Import utilities
@@ -174,10 +174,25 @@ class BilingualEmbeddingGenerator:
         # Device
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         print(f"\nUsing device: {self.device}")
+        
+        # Detect GPU architecture for mixed precision optimization
+        self.use_amp = False
         if self.device.type == 'cuda':
-            print(f"GPU: {torch.cuda.get_device_name(0)}")
-            print(f"GPU Memory: {torch.cuda.get_device_properties(0).total_memory / 1e9:.2f} GB")
-            print(f"⚡ Mixed precision (FP16) enabled for faster inference")
+            gpu_name = torch.cuda.get_device_name(0)
+            compute_cap = torch.cuda.get_device_capability(0)
+            gpu_memory = torch.cuda.get_device_properties(0).total_memory / 1e9
+            
+            print(f"GPU: {gpu_name}")
+            print(f"GPU Memory: {gpu_memory:.2f} GB")
+            print(f"Compute Capability: {compute_cap[0]}.{compute_cap[1]}")
+            
+            # Only enable mixed precision for Volta+ (V100, A100, etc.)
+            # P100 (Pascal 6.0) runs SLOWER with FP16 autocast
+            if compute_cap[0] >= 7:
+                self.use_amp = True
+                print(f"⚡ Mixed precision (FP16) ENABLED - Volta+ GPU detected")
+            else:
+                print(f"⚠️  Mixed precision DISABLED - {gpu_name} runs faster with FP32")
         else:
             print("⚠️  Warning: Running on CPU will be very slow. Use GPU for faster embeddings.")
         
@@ -229,6 +244,7 @@ class BilingualEmbeddingGenerator:
             print(f"\n[{stage_name}] Generating embeddings...")
             print(f"  Total samples: {len(texts)}")
             print(f"  Batch size: {self.batch_size}")
+            print(f"  Parallel tokenization: 4 worker processes")
         
         start_time = time.time()
         last_log_time = start_time
@@ -244,30 +260,60 @@ class BilingualEmbeddingGenerator:
             all_embeddings[:len(partial_emb)] = partial_emb
             embeddings = []  # Clear list
         
-        # Create batches
-        for i in range(start_idx, len(texts), self.batch_size):
-            batch_texts = texts[i:i + self.batch_size]
-            batch_end = i + len(batch_texts)
+        # Create dataset for parallel tokenization
+        class TextDataset(Dataset):
+            def __init__(self, texts, start_idx):
+                self.texts = texts[start_idx:]
+                self.start_idx = start_idx
             
-            # Tokenize
+            def __len__(self):
+                return len(self.texts)
+            
+            def __getitem__(self, idx):
+                return self.texts[idx], self.start_idx + idx
+        
+        dataset = TextDataset(texts, start_idx)
+        
+        # Custom collate function for batched tokenization
+        def collate_fn(batch):
+            batch_texts, indices = zip(*batch)
+            # Tokenize batch in worker process (parallel CPU tokenization)
             inputs = self.tokenizer(
-                batch_texts,
+                list(batch_texts),
                 padding=True,
                 truncation=True,
                 max_length=self.max_length,
                 return_tensors='pt'
             )
+            return inputs, list(indices)
+        
+        # DataLoader with parallel workers for tokenization
+        # num_workers=4 means 4 CPU cores tokenize in parallel while GPU processes
+        dataloader = DataLoader(
+            dataset,
+            batch_size=self.batch_size,
+            shuffle=False,
+            num_workers=4,  # Parallel tokenization
+            pin_memory=True,  # Faster CPU->GPU transfer
+            collate_fn=collate_fn,
+            prefetch_factor=2  # Prefetch 2 batches per worker
+        )
+        
+        # Process batches with parallel tokenization
+        for batch_idx, (inputs, indices) in enumerate(dataloader):
+            batch_start_idx = indices[0]
+            batch_end_idx = indices[-1] + 1
             
-            # Move to GPU with non_blocking for async transfer
+            # Move to GPU (already tokenized by worker process)
             inputs = {k: v.to(self.device, non_blocking=True) for k, v in inputs.items()}
             
-            # Generate embeddings with mixed precision for speed
+            # Generate embeddings with conditional mixed precision
             with torch.inference_mode():
-                # Use autocast for automatic mixed precision (2-4x speedup on modern GPUs)
-                with torch.cuda.amp.autocast(enabled=self.device.type == 'cuda'):
+                # Only use autocast for Volta+ GPUs (V100, A100) - P100 runs faster without it
+                with torch.cuda.amp.autocast(enabled=self.use_amp):
                     outputs = self.embedding_model(**inputs)
-                    # Use CLS token embedding - keep on GPU
-                    batch_embeddings = outputs.last_hidden_state[:, 0, :].float()
+                    # Use CLS token embedding - detach to free computation graph immediately
+                    batch_embeddings = outputs.last_hidden_state[:, 0, :].float().detach()
             
             # Detect embedding dimension from first batch and allocate array
             if all_embeddings is None:
@@ -275,10 +321,15 @@ class BilingualEmbeddingGenerator:
                 all_embeddings = np.empty((len(texts), embedding_dim), dtype=np.float32)
                 print(f"  Detected embedding dimension: {embedding_dim}")
             
-            # Batch copy to CPU and store in pre-allocated array (reduces sync overhead)
-            all_embeddings[i:batch_end] = batch_embeddings.cpu().numpy()
+            # Immediate GPU-to-CPU transfer
+            all_embeddings[batch_start_idx:batch_end_idx] = batch_embeddings.cpu().numpy()
             
-            processed = batch_end
+            # Explicit cleanup - free GPU memory immediately
+            del batch_embeddings, outputs, inputs
+            if batch_idx % 50 == 0:  # Clear cache every 50 batches to prevent fragmentation
+                torch.cuda.empty_cache()
+            
+            processed = batch_end_idx
             current_time = time.time()
             
             # Progress logging - only every 5 seconds or at completion to reduce overhead
