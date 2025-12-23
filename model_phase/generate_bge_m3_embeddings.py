@@ -180,8 +180,13 @@ class BGEM3EmbeddingGenerator:
         
         # Load BGE-M3 model (frozen for embedding extraction)
         print(f"\nLoading BGE-M3 model: {self.model_name}")
-        self.tokenizer = AutoTokenizer.from_pretrained(self.model_name, trust_remote_code=True)
-        self.embedding_model = AutoModel.from_pretrained(self.model_name, trust_remote_code=True)
+        # Use local_files_only=False to allow download, but don't check for optional features
+        self.tokenizer = AutoTokenizer.from_pretrained(
+            self.model_name,
+            clean_up_tokenization_spaces=True,
+            use_fast=True
+        )
+        self.embedding_model = AutoModel.from_pretrained(self.model_name)
         self.embedding_model.to(self.device)
         self.embedding_model.eval()  # Freeze embedding model
         
@@ -532,7 +537,7 @@ if __name__ == "__main__":
                         help='HuggingFace dataset name')
     parser.add_argument('--max_length', type=int, default=512,
                         help='Maximum sequence length')
-    parser.add_argument('--batch_size', type=int, default=64,
+    parser.add_argument('--batch_size', type=int, default=256,
                         help='Batch size for embedding generation')
     parser.add_argument('--subset', type=float, default=1.0,
                         help='Fraction of data to use')
