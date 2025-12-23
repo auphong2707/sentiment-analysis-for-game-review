@@ -7,7 +7,7 @@ set -e  # Exit on error
 
 # RoBERTa parameters (constants - not tuned)
 readonly MAX_LENGTH=256
-readonly BATCH_SIZE=32
+readonly BATCH_SIZE=64
 readonly NUM_EPOCHS=5
 readonly WARMUP_STEPS=0
 readonly WEIGHT_DECAY=0.01
