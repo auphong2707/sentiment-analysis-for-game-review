@@ -168,6 +168,10 @@ if [ "$SKIP_GRIDSEARCH" = false ]; then
         
         # Build command (no HuggingFace upload during grid search)
         # Always disable checkpoints during grid search to save disk space
+        # Use 10x smaller eval/save steps for 10% data subset
+        GRIDSEARCH_EVAL_STEPS=$((EVAL_STEPS / 10))
+        GRIDSEARCH_SAVE_STEPS=$((SAVE_STEPS / 10))
+        
         CMD="python model_phase/main_roberta.py \
             --dataset $DATASET \
             --max_length $MAX_LENGTH \
@@ -176,8 +180,8 @@ if [ "$SKIP_GRIDSEARCH" = false ]; then
             --num_epochs $NUM_EPOCHS \
             --warmup_steps $WARMUP_STEPS \
             --weight_decay $WEIGHT_DECAY \
-            --eval_steps $EVAL_STEPS \
-            --save_steps $SAVE_STEPS \
+            --eval_steps $GRIDSEARCH_EVAL_STEPS \
+            --save_steps $GRIDSEARCH_SAVE_STEPS \
             --subset $GRIDSEARCH_SUBSET \
             --output_dir $OUTPUT_DIR \
             --no_upload \
