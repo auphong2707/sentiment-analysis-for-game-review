@@ -191,11 +191,13 @@ class LSTMSentimentClassifier:
                  hidden_dim=128,
                  learning_rate=1e-3,
                  batch_size=128,
-                 epochs=20,
+                 epochs=5,
                  max_len=200,
                  vocab_size=73738,
                  dropout_rate=0.5,
                  fc_sizes=(64, 64, 16),
+                 eval_steps=500,
+                 save_steps=500,
                  random_state=42):
         """
         Initialize the LSTM classifier following paper specifications.
@@ -220,8 +222,8 @@ class LSTMSentimentClassifier:
         self.max_len = max_len
         self.vocab_size = vocab_size
         self.dropout_rate = dropout_rate
-        self.fc_sizes = tuple(fc_sizes)
-        self.random_state = random_state
+        self.fc_sizes = tuple(fc_sizes)        self.eval_steps = eval_steps
+        self.save_steps = save_steps        self.random_state = random_state
         
         # Set random seeds
         torch.manual_seed(random_state)
@@ -305,14 +307,20 @@ class LSTMSentimentClassifier:
         # Import wandb utilities
         from model_phase.utilities import log_to_wandb
         
-        # Training loop with validation
+        # Initialize checkpoint tracking
+        best_val_f1 = -1
+        best_checkpoint_path = None
+        checkpoint_paths = []  # Keep track of all checkpoints
+        global_step = 0
+        
+        # Training loop with step-based validation
         for epoch in range(1, self.epochs + 1):
             # Training phase
             total_loss = 0
             self.model.train()
             
             progress_bar = tqdm(dataloader, desc=f"Epoch {epoch}/{self.epochs}")
-            for inputs, targets in progress_bar:
+            for batch_idx, (inputs, targets) in enumerate(progress_bar):
                 inputs = inputs.to(self.device)
                 targets = targets.to(self.device)
                 
@@ -333,66 +341,107 @@ class LSTMSentimentClassifier:
                 optimizer.step()
                 
                 total_loss += loss.item()
-                progress_bar.set_postfix({'loss': f'{loss.item():.4f}'})
+                progress_bar.set_postfix({'loss': f'{loss.item():.4f}', 'step': global_step})
+                
+                global_step += 1
+                
+                # Step-based validation
+                if val_dataloader is not None and global_step % self.eval_steps == 0:
+                    self.model.eval()
+                    val_total_loss = 0
+                    val_predictions = []
+                    val_targets = []
+                    
+                    with torch.no_grad():
+                        for val_inputs, val_targets_batch in val_dataloader:
+                            val_inputs = val_inputs.to(self.device)
+                            val_targets_batch = val_targets_batch.to(self.device)
+                            
+                            val_outputs = self.model(val_inputs)
+                            
+                            if num_classes == 2:
+                                targets_loss = val_targets_batch.float().clamp(0, 1).unsqueeze(1)
+                                val_loss = criterion(val_outputs, targets_loss)
+                                # Get predictions
+                                probs = torch.sigmoid(val_outputs).squeeze()
+                                preds = (probs > 0.5).cpu().numpy()
+                            else:
+                                targets_loss = val_targets_batch.long().clamp(0, num_classes - 1)
+                                val_loss = criterion(val_outputs, targets_loss)
+                                # Get predictions
+                                preds = val_outputs.argmax(dim=1).cpu().numpy()
+                            
+                            val_total_loss += val_loss.item()
+                            val_predictions.extend(preds)
+                            val_targets.extend(val_targets_batch.cpu().numpy())
+                    
+                    val_loss_avg = val_total_loss / len(val_dataloader)
+                    val_acc = accuracy_score(val_targets, val_predictions)
+                    val_f1 = f1_score(val_targets, val_predictions, average='macro', zero_division=0)
+                    
+                    print(f"\n  Step {global_step}: Val Loss = {val_loss_avg:.4f}, Val Acc = {val_acc:.4f}, Val F1 = {val_f1:.4f}")
+                    
+                    # Log to wandb
+                    if use_wandb:
+                        log_to_wandb({
+                            'step': global_step,
+                            'epoch': epoch,
+                            'val_loss': val_loss_avg,
+                            'val_accuracy': val_acc,
+                            'val_f1': val_f1
+                        }, use_wandb=True)
+                    
+                    # Save checkpoint if this is the best model so far
+                    if val_f1 > best_val_f1:
+                        best_val_f1 = val_f1
+                        
+                        # Save checkpoint
+                        if output_dir is not None:
+                            checkpoint_dir = Path(output_dir) / 'checkpoints'
+                            checkpoint_dir.mkdir(parents=True, exist_ok=True)
+                            
+                            checkpoint_path = checkpoint_dir / f'checkpoint_step_{global_step}_f1_{val_f1:.4f}.pt'
+                            torch.save({
+                                'step': global_step,
+                                'epoch': epoch,
+                                'model_state_dict': self.model.state_dict(),
+                                'optimizer_state_dict': optimizer.state_dict(),
+                                'val_f1': val_f1,
+                                'val_acc': val_acc,
+                                'val_loss': val_loss_avg,
+                            }, checkpoint_path)
+                            
+                            checkpoint_paths.append(checkpoint_path)
+                            best_checkpoint_path = checkpoint_path
+                            
+                            # Keep only 2 best checkpoints
+                            if len(checkpoint_paths) > 2:
+                                # Remove oldest checkpoint
+                                oldest_checkpoint = checkpoint_paths.pop(0)
+                                if oldest_checkpoint.exists() and oldest_checkpoint != best_checkpoint_path:
+                                    oldest_checkpoint.unlink()
+                            
+                            print(f"  ✓ Saved checkpoint: {checkpoint_path.name}")
+                    
+                    # Return to training mode
+                    self.model.train()
             
+            # End of epoch summary
             avg_train_loss = total_loss / len(dataloader)
+            print(f"  Epoch {epoch} complete: Train Loss = {avg_train_loss:.4f}")
             
-            # Validation phase
-            val_loss = None
-            val_acc = None
-            val_f1 = None
-            if val_dataloader is not None:
-                self.model.eval()
-                val_total_loss = 0
-                val_predictions = []
-                val_targets = []
-                
-                with torch.no_grad():
-                    for inputs, targets in val_dataloader:
-                        inputs = inputs.to(self.device)
-                        targets = targets.to(self.device)
-                        
-                        outputs = self.model(inputs)
-                        
-                        if num_classes == 2:
-                            targets_loss = targets.float().clamp(0, 1).unsqueeze(1)
-                            loss = criterion(outputs, targets_loss)
-                            # Get predictions
-                            probs = torch.sigmoid(outputs).squeeze()
-                            preds = (probs > 0.5).cpu().numpy()
-                        else:
-                            targets_loss = targets.long().clamp(0, num_classes - 1)
-                            loss = criterion(outputs, targets_loss)
-                            # Get predictions
-                            preds = outputs.argmax(dim=1).cpu().numpy()
-                        
-                        val_total_loss += loss.item()
-                        val_predictions.extend(preds)
-                        val_targets.extend(targets.cpu().numpy())
-                
-                val_loss = val_total_loss / len(val_dataloader)
-                val_acc = accuracy_score(val_targets, val_predictions)
-                val_f1 = f1_score(val_targets, val_predictions, average='macro', zero_division=0)
-            
-            # Print epoch summary
-            if val_loss is not None:
-                print(f"  Epoch {epoch}: Train Loss = {avg_train_loss:.4f}, Val Loss = {val_loss:.4f}, Val Acc = {val_acc:.4f}, Val F1 = {val_f1:.4f}")
-            else:
-                print(f"  Epoch {epoch}: Train Loss = {avg_train_loss:.4f}")
-            
-            # Log to wandb
+            # Log epoch metrics to wandb
             if use_wandb:
-                metrics = {
+                log_to_wandb({
                     'epoch': epoch,
                     'train_loss': avg_train_loss,
-                }
-                if val_loss is not None:
-                    metrics.update({
-                        'val_loss': val_loss,
-                        'val_accuracy': val_acc,
-                        'val_f1': val_f1
-                    })
-                log_to_wandb(metrics, use_wandb=True)
+                }, use_wandb=True)
+        
+        # Load best checkpoint if available
+        if best_checkpoint_path is not None and best_checkpoint_path.exists():
+            print(f"\n✓ Loading best checkpoint: {best_checkpoint_path.name} (F1: {best_val_f1:.4f})")
+            checkpoint = torch.load(best_checkpoint_path, map_location=self.device)
+            self.model.load_state_dict(checkpoint['model_state_dict'])
         
         self.is_fitted = True
         print("✓ Training complete!")
@@ -573,11 +622,13 @@ def main(dataset_name,
          hidden_dim=128,
          learning_rate=1e-3,
          batch_size=128,
-         epochs=20,
+         epochs=5,
          max_len=200,
          vocab_size=73738,
          dropout_rate=0.5,
          fc_sizes=(64,64,16),
+         eval_steps=500,
+         save_steps=500,
          subset=1.0,
          output_dir=None,
          use_wandb=False,
@@ -663,7 +714,9 @@ def main(dataset_name,
         max_len=max_len,
         vocab_size=vocab_size,
         dropout_rate=dropout_rate,
-        fc_sizes=fc_sizes
+        fc_sizes=fc_sizes,
+        eval_steps=eval_steps,
+        save_steps=save_steps
     )
     
     # Train model
@@ -778,8 +831,8 @@ if __name__ == "__main__":
     parser.add_argument(
         '--epochs',
         type=int,
-        default=20,
-        help='Number of training epochs (default: 20)'
+        default=5,
+        help='Number of training epochs (default: 5)'
     )
     parser.add_argument(
         '--max_len',
@@ -798,6 +851,18 @@ if __name__ == "__main__":
         type=float,
         default=0.5,
         help='Dropout rate (default: 0.5)'
+    )
+    parser.add_argument(
+        '--eval_steps',
+        type=int,
+        default=500,
+        help='Number of steps between evaluations (default: 500)'
+    )
+    parser.add_argument(
+        '--save_steps',
+        type=int,
+        default=500,
+        help='Number of steps between checkpoint saves (default: 500)'
     )
     parser.add_argument(
         '--n_jobs',
@@ -875,6 +940,8 @@ if __name__ == "__main__":
         vocab_size=args.vocab_size,
         dropout_rate=args.dropout_rate,
         fc_sizes=fc_sizes_parsed,
+        eval_steps=args.eval_steps,
+        save_steps=args.save_steps,
         subset=args.subset,
         output_dir=args.output_dir,
         use_wandb=args.use_wandb,

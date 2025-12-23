@@ -12,6 +12,8 @@ readonly BATCH_SIZE=64
 readonly EPOCHS=5
 readonly DROPOUT_RATE=0.5
 readonly DENSE_UNITS=128
+readonly EVAL_STEPS=500
+readonly SAVE_STEPS=500
 
 # Grid search parameters (tune learning_rate for optimizer)
 readonly LEARNING_RATE_VALUES=(1e-5 5e-5 1e-4 5e-4 1e-3 5e-3)
@@ -146,6 +148,8 @@ if [ "$SKIP_GRIDSEARCH" = false ]; then
             --learning_rate $LEARNING_RATE \
             --batch_size $BATCH_SIZE \
             --epochs $EPOCHS \
+            --eval_steps $EVAL_STEPS \
+            --save_steps $SAVE_STEPS \
             --subset $GRIDSEARCH_SUBSET \
             --output_dir $OUTPUT_DIR \
             --no_upload"
@@ -273,6 +277,8 @@ FINAL_CMD="python model_phase/main_LSTM_baseline.py \
     --learning_rate $BEST_LEARNING_RATE \
     --batch_size $BATCH_SIZE \
     --epochs $EPOCHS \
+    --eval_steps $EVAL_STEPS \
+    --save_steps $SAVE_STEPS \
     --subset $FINAL_SUBSET"
 
 # Add n_jobs parameter if specified

@@ -112,10 +112,12 @@ bash model_phase/train_roberta.sh \
 - `--skip_gridsearch` - Skip grid search
 - `--resume_from_checkpoint` - Resume training
 - `--no_checkpoints` - Disable checkpoints
+- `--eval_steps` - Steps between evaluations (default: 1000)
+- `--save_steps` - Steps between saves (default: 1000)
 
 **Grid Search Parameters:**
 - `learning_rate`: 5e-6, 1e-5, 2e-5, 5e-5
-- Fixed: batch_size=32, epochs=5, max_length=256
+- Fixed: batch_size=32, epochs=5, max_length=256, eval_steps=1000, save_steps=1000
 
 ---
 
@@ -134,10 +136,12 @@ bash model_phase/train_LSTM_baseline.sh \
 - `--final_subset` - Final training fraction (default: 1.0)
 - `--n_jobs` - CPU cores
 - `--skip_gridsearch` - Skip grid search
+- `--eval_steps` - Steps between evaluations (default: 500)
+- `--save_steps` - Steps between saves (default: 500)
 
 **Grid Search Parameters:**
 - `learning_rate`: 1e-5, 5e-5, 1e-4, 5e-4, 1e-3, 5e-3
-- Fixed: embed_dim=128, hidden_dim=128, batch_size=64, epochs=5
+- Fixed: embed_dim=128, hidden_dim=128, batch_size=64, epochs=5, eval_steps=500, save_steps=500
 
 ---
 
@@ -183,6 +187,11 @@ All training scripts follow the same 3-step pattern:
 1. **Grid Search** - Test hyperparameters on 10% data (optimizes F1-Macro)
 2. **Extract Best Config** - Auto-parse optimal parameters
 3. **Final Training** - Train on 100% data → Upload to HuggingFace
+
+**Validation & Checkpointing:**
+- RoBERTa: Validates every 1000 steps (~18-19 times/epoch), saves best 2 checkpoints
+- LSTM: Validates every 500 steps (~18-19 times/epoch), saves best 2 checkpoints
+- Both models keep only 2 best checkpoints based on validation F1 score
 
 Skip grid search if already done: `--skip_gridsearch`
 

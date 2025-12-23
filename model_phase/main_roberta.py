@@ -156,9 +156,11 @@ class RoBERTaSentimentClassifier:
                  max_length=512,
                  batch_size=16,
                  learning_rate=2e-5,
-                 num_epochs=3,
+                 num_epochs=5,
                  warmup_steps=0,
                  weight_decay=0.01,
+                 eval_steps=1000,
+                 save_steps=1000,
                  output_dir=None,
                  checkpoint_dir=None):
         """
@@ -183,6 +185,8 @@ class RoBERTaSentimentClassifier:
         self.num_epochs = num_epochs
         self.warmup_steps = warmup_steps
         self.weight_decay = weight_decay
+        self.eval_steps = eval_steps
+        self.save_steps = save_steps
         self.output_dir = output_dir
         self.checkpoint_dir = checkpoint_dir
         
@@ -299,8 +303,10 @@ class RoBERTaSentimentClassifier:
             warmup_steps=self.warmup_steps,
             logging_dir=str(self.output_dir / "logs"),
             logging_steps=10,
-            eval_strategy="epoch",
-            save_strategy="epoch" if save_checkpoints else "no",
+            eval_strategy="steps",
+            eval_steps=self.eval_steps,
+            save_strategy="steps" if save_checkpoints else "no",
+            save_steps=self.save_steps if save_checkpoints else None,
             save_total_limit=2 if save_checkpoints else None,
             load_best_model_at_end=save_checkpoints,  # Only load best model if we're saving checkpoints
             metric_for_best_model="f1",
@@ -610,9 +616,11 @@ def main(dataset_name,
          max_length=512,
          batch_size=16,
          learning_rate=2e-5,
-         num_epochs=3,
+         num_epochs=5,
          warmup_steps=0,
          weight_decay=0.01,
+         eval_steps=1000,
+         save_steps=1000,
          subset=1.0,
          output_dir=None,
          use_wandb=False,
@@ -721,6 +729,8 @@ def main(dataset_name,
         num_epochs=num_epochs,
         warmup_steps=warmup_steps,
         weight_decay=weight_decay,
+        eval_steps=eval_steps,
+        save_steps=save_steps,
         output_dir=output_dir,
         checkpoint_dir=checkpoint_dir
     )
@@ -933,8 +943,8 @@ if __name__ == "__main__":
     parser.add_argument(
         '--num_epochs',
         type=int,
-        default=3,
-        help='Number of training epochs (default: 3)'
+        default=5,
+        help='Number of training epochs (default: 5)'
     )
     parser.add_argument(
         '--warmup_steps',
@@ -947,6 +957,18 @@ if __name__ == "__main__":
         type=float,
         default=0.01,
         help='Weight decay for optimizer (default: 0.01)'
+    )
+    parser.add_argument(
+        '--eval_steps',
+        type=int,
+        default=1000,
+        help='Number of steps between evaluations (default: 1000)'
+    )
+    parser.add_argument(
+        '--save_steps',
+        type=int,
+        default=1000,
+        help='Number of steps between checkpoint saves (default: 1000)'
     )
     parser.add_argument(
         '--subset',
@@ -1031,6 +1053,8 @@ if __name__ == "__main__":
         num_epochs=args.num_epochs,
         warmup_steps=args.warmup_steps,
         weight_decay=args.weight_decay,
+        eval_steps=args.eval_steps,
+        save_steps=args.save_steps,
         subset=args.subset,
         output_dir=args.output_dir,
         use_wandb=args.use_wandb,

@@ -11,6 +11,8 @@ readonly BATCH_SIZE=32
 readonly NUM_EPOCHS=5
 readonly WARMUP_STEPS=0
 readonly WEIGHT_DECAY=0.01
+readonly EVAL_STEPS=1000
+readonly SAVE_STEPS=1000
 
 # Grid search parameters (tune learning rate for RoBERTa)
 readonly LEARNING_RATE_VALUES=(5e-6 1e-5 2e-5 5e-5)
@@ -174,6 +176,8 @@ if [ "$SKIP_GRIDSEARCH" = false ]; then
             --num_epochs $NUM_EPOCHS \
             --warmup_steps $WARMUP_STEPS \
             --weight_decay $WEIGHT_DECAY \
+            --eval_steps $EVAL_STEPS \
+            --save_steps $SAVE_STEPS \
             --subset $GRIDSEARCH_SUBSET \
             --output_dir $OUTPUT_DIR \
             --no_upload \
@@ -307,6 +311,8 @@ FINAL_CMD="python model_phase/main_roberta.py \
     --num_epochs $NUM_EPOCHS \
     --warmup_steps $WARMUP_STEPS \
     --weight_decay $WEIGHT_DECAY \
+    --eval_steps $EVAL_STEPS \
+    --save_steps $SAVE_STEPS \
     --subset $FINAL_SUBSET \
     --experiment_name $FINAL_EXPERIMENT_NAME \
     --resume_from_checkpoint auto"
