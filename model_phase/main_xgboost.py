@@ -1,7 +1,7 @@
 """
-XGBoost Model: Using Pre-computed bilingual-embedding-base Embeddings
+XGBoost Model: Using Pre-computed bilingual-embedding-small Embeddings
 
-Core Idea: Load pre-computed bilingual-embedding-base embeddings from checkpoint and train XGBoost classifier.
+Core Idea: Load pre-computed bilingual-embedding-small embeddings from checkpoint and train XGBoost classifier.
 
 How it Works:
 - Loads embeddings from checkpoint files (no embedding computation needed)
@@ -257,8 +257,8 @@ class XGBoostSentimentClassifier:
             try:
                 import torch
                 if torch.cuda.is_available():
-                    params['tree_method'] = 'gpu_hist'
-                    params['gpu_id'] = 0
+                    params['tree_method'] = 'hist'
+                    params['device'] = 'cuda'
                     print("  Using GPU acceleration")
             except:
                 print("  GPU not available, using CPU")
@@ -347,7 +347,7 @@ class XGBoostSentimentClassifier:
         # Save config
         config = {
             'model_type': 'XGBoost',
-            'embedding_model': 'Lajavaness/bilingual-embedding-base',
+            'embedding_model': 'Lajavaness/bilingual-embedding-small',
             'n_estimators': self.n_estimators,
             'max_depth': self.max_depth,
             'learning_rate': self.learning_rate,
@@ -382,8 +382,8 @@ def evaluate_classifier(model, texts, labels, split_name="Test", use_wandb=False
         split_name: Name of the split for display
         use_wandb: Whether to log to WandB
         output_dir: Directory to save raw outputs
-        embedding_model: bilingual-embedding-base model for generating embeddings
-        tokenizer: bilingual-embedding-base tokenizer
+        embedding_model: bilingual-embedding-small model for generating embeddings
+        tokenizer: bilingual-embedding-small tokenizer
         max_length: Max sequence length for tokenization
         batch_size: Batch size for embedding generation
         
@@ -403,7 +403,7 @@ def evaluate_classifier(model, texts, labels, split_name="Test", use_wandb=False
     # Start timing for full inference pipeline
     total_start = time.time()
     
-    # Step 1: Generate bilingual-embedding-base embeddings
+    # Step 1: Generate bilingual-embedding-small embeddings
     embedding_start = time.time()
     device = next(embedding_model.parameters()).device
     embeddings_list = []
@@ -857,9 +857,9 @@ def main(checkpoint_dir,
     
     print(f"\n✓ Training completed in {total_time:.2f}s")
     
-    # Load bilingual-embedding-base model for inference timing
+    # Load bilingual-embedding-small model for inference timing
     print(f"\n{'='*60}")
-    print("Loading bilingual-embedding-base Model for Inference Timing")
+    print("Loading bilingual-embedding-small Model for Inference Timing")
     print(f"{'='*60}")
     
     from transformers import AutoModel, AutoTokenizer
@@ -870,9 +870,9 @@ def main(checkpoint_dir,
     embedding_max_length = checkpoint_metadata.get('max_length', 512)
     embedding_batch_size = checkpoint_metadata.get('batch_size', 32)
     
-    print(f"Loading Lajavaness/bilingual-embedding-base...")
-    embedding_tokenizer = AutoTokenizer.from_pretrained('Lajavaness/bilingual-embedding-base', trust_remote_code=True)
-    embedding_model = AutoModel.from_pretrained('Lajavaness/bilingual-embedding-base', trust_remote_code=True)
+    print(f"Loading Lajavaness/bilingual-embedding-small...")
+    embedding_tokenizer = AutoTokenizer.from_pretrained('Lajavaness/bilingual-embedding-small', trust_remote_code=True)
+    embedding_model = AutoModel.from_pretrained('Lajavaness/bilingual-embedding-small', trust_remote_code=True)
     
     # Move to GPU and set to eval mode
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -883,7 +883,7 @@ def main(checkpoint_dir,
     for param in embedding_model.parameters():
         param.requires_grad = False
     
-    print(f"✓ bilingual-embedding-base loaded on {device}")
+    print(f"✓ bilingual-embedding-small loaded on {device}")
     print(f"  Using max_length={embedding_max_length}, batch_size={embedding_batch_size}")
     
     # Evaluate on validation set
@@ -918,7 +918,7 @@ def main(checkpoint_dir,
     all_results = {
         'model_config': {
             'model_name': 'XGBoost',
-            'embedding_model': 'Lajavaness/bilingual-embedding-base',
+            'embedding_model': 'Lajavaness/bilingual-embedding-small',
             'n_estimators': n_estimators,
             'max_depth': max_depth,
             'learning_rate': learning_rate,
