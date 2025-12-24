@@ -560,9 +560,14 @@ def evaluate_classifier(model, texts, labels, split_name="Test", use_trainer_pre
     labels_idx = [label_to_idx[label] for label in labels]
     predictions_idx = [label_to_idx[pred] for pred in predictions]
     
-    # Calculate metrics
+    # Calculate metrics (macro for balanced performance across classes)
     accuracy = accuracy_score(labels_idx, predictions_idx)
     precision, recall, f1, support = precision_recall_fscore_support(
+        labels_idx, predictions_idx, average='macro', zero_division=0
+    )
+    
+    # Also calculate weighted metrics
+    precision_weighted, recall_weighted, f1_weighted, _ = precision_recall_fscore_support(
         labels_idx, predictions_idx, average='weighted', zero_division=0
     )
     
@@ -577,9 +582,12 @@ def evaluate_classifier(model, texts, labels, split_name="Test", use_trainer_pre
     # Print results
     print(f"\n{split_name} Results:")
     print(f"  Accuracy: {accuracy:.4f}")
-    print(f"  Precision (weighted): {precision:.4f}")
-    print(f"  Recall (weighted): {recall:.4f}")
-    print(f"  F1-score (weighted): {f1:.4f}")
+    print(f"  Precision (macro): {precision:.4f}")
+    print(f"  Recall (macro): {recall:.4f}")
+    print(f"  F1-score (macro): {f1:.4f}")
+    print(f"  Precision (weighted): {precision_weighted:.4f}")
+    print(f"  Recall (weighted): {recall_weighted:.4f}")
+    print(f"  F1-score (weighted): {f1_weighted:.4f}")
     print(f"  Inference time: {inference_time:.2f}s")
     print(f"  Samples/second: {len(texts)/inference_time:.2f}")
     
@@ -603,6 +611,9 @@ def evaluate_classifier(model, texts, labels, split_name="Test", use_trainer_pre
         f'{split_name.lower()}_precision': float(precision),
         f'{split_name.lower()}_recall': float(recall),
         f'{split_name.lower()}_f1': float(f1),
+        f'{split_name.lower()}_precision_weighted': float(precision_weighted),
+        f'{split_name.lower()}_recall_weighted': float(recall_weighted),
+        f'{split_name.lower()}_f1_weighted': float(f1_weighted),
         f'{split_name.lower()}_inference_time': float(inference_time),
         f'{split_name.lower()}_samples_per_second': float(len(texts)/inference_time),
         f'{split_name.lower()}_classification_report': class_report,

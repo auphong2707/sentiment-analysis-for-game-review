@@ -436,9 +436,14 @@ def evaluate_classifier(model, texts, labels, split_name="Test", use_wandb=False
         raw_output_file = output_dir / f'raw_outputs_{split_name.lower()}.jsonl'
         save_raw_outputs(texts, predictions, labels, raw_output_file, split_name)
     
-    # Calculate metrics
+    # Calculate metrics (macro for balanced performance across classes)
     accuracy = accuracy_score(labels, predictions)
     precision, recall, f1, _ = precision_recall_fscore_support(
+        labels, predictions, average='macro', zero_division=0
+    )
+    
+    # Also calculate weighted metrics
+    precision_weighted, recall_weighted, f1_weighted, _ = precision_recall_fscore_support(
         labels, predictions, average='weighted', zero_division=0
     )
     
@@ -454,9 +459,12 @@ def evaluate_classifier(model, texts, labels, split_name="Test", use_wandb=False
     # Print results with timing breakdown
     print(f"\n{split_name} Results:")
     print(f"  Accuracy: {accuracy:.4f}")
-    print(f"  Precision: {precision:.4f}")
-    print(f"  Recall: {recall:.4f}")
-    print(f"  F1-score: {f1:.4f}")
+    print(f"  Precision (macro): {precision:.4f}")
+    print(f"  Recall (macro): {recall:.4f}")
+    print(f"  F1-score (macro): {f1:.4f}")
+    print(f"  Precision (weighted): {precision_weighted:.4f}")
+    print(f"  Recall (weighted): {recall_weighted:.4f}")
+    print(f"  F1-score (weighted): {f1_weighted:.4f}")
     print(f"  Inference time: {inference_time:.2f}s (Embedding: {embedding_time:.2f}s | XGBoost: {xgboost_time:.2f}s)")
     print(f"  Samples/second: {len(labels)/inference_time:.2f}")
     
@@ -475,6 +483,9 @@ def evaluate_classifier(model, texts, labels, split_name="Test", use_wandb=False
         f'{split_name.lower()}_precision': float(precision),
         f'{split_name.lower()}_recall': float(recall),
         f'{split_name.lower()}_f1': float(f1),
+        f'{split_name.lower()}_precision_weighted': float(precision_weighted),
+        f'{split_name.lower()}_recall_weighted': float(recall_weighted),
+        f'{split_name.lower()}_f1_weighted': float(f1_weighted),
         f'{split_name.lower()}_inference_time': float(inference_time),
         f'{split_name.lower()}_embedding_time': float(embedding_time),
         f'{split_name.lower()}_xgboost_time': float(xgboost_time),
