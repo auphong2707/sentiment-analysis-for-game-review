@@ -1,0 +1,236 @@
+\section{Dataset Characteristics}
+
+The final dataset comprises 787{,}356 game reviews collected from Metacritic through automated web scraping, representing a comprehensive collection of user-generated sentiment data across the gaming domain. This dataset captures diverse player perspectives spanning multiple gaming platforms, genres, and release periods, providing a robust foundation for sentiment analysis modeling.
+
+\subsection{Class Distribution and Imbalance Analysis}
+
+The dataset exhibits a multi-class sentiment distribution with three distinct categories: positive, negative, and mixed reviews. The distribution demonstrates notable class imbalance characteristic of real-world user review data:
+
+\begin{itemize}
+    \item \textbf{Positive reviews:} 460{,}730 samples (58.5\%)
+    \item \textbf{Negative reviews:} 199{,}899 samples (25.4\%)
+    \item \textbf{Mixed reviews:} 126{,}727 samples (16.1\%)
+\end{itemize}
+
+The positive class represents the majority with approximately 58.5\% of the total reviews, establishing a 2.31:1 ratio compared to negative reviews and a 3.64:1 ratio compared to mixed reviews. This imbalance reflects realistic user behavior patterns where satisfied players are more likely to leave reviews. At the same time, negative reviews account for over a quarter of the dataset, ensuring substantial representation of critical feedback. Mixed reviews, which contain nuanced or conflicting sentiments, constitute the smallest but analytically most complex class at approximately 16\% of the total samples.
+
+The class distribution presents several implications for model training and evaluation:
+
+\begin{enumerate}
+    \item The imbalance necessitates careful consideration of evaluation metrics beyond simple accuracy, favoring metrics such as precision, recall, and F1-score.
+    \item Stratified sampling is employed during train--validation--test splits to maintain proportional class representation across all data partitions.
+    \item The presence of three sentiment classes increases classification complexity compared to binary sentiment analysis, requiring models to distinguish between strong sentiments and nuanced mixed opinions.
+\end{enumerate}
+
+\subsection{Textual Characteristics and Statistical Properties}
+
+A comprehensive analysis of review text properties reveals distinct characteristics across sentiment categories. Aggregate statistics are summarized in Table~\ref{tab:text_stats}.
+
+\begin{table}[htbp]
+\centering
+\caption{Comprehensive Text Statistics by Review Category}
+\label{tab:text_stats}
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Metric} & \textbf{Positive} & \textbf{Negative} & \textbf{Mixed} & \textbf{Overall} \\
+\midrule
+\multicolumn{5}{l}{\textit{Character Length Statistics}} \\
+Mean             & 551  & 609  & 828  & 610 \\
+Median           & 304  & 342  & 484  & 337 \\
+Std.\ Deviation  & 706  & 754  & 940  & 767 \\
+Minimum          & 3    & 3    & 4    & 3   \\
+Maximum          & 8{,}995 & 8{,}978 & 8{,}972 & 8{,}995 \\
+\midrule
+\multicolumn{5}{l}{\textit{Word Count Statistics}} \\
+Mean             & 100  & 111  & 151  & 111 \\
+Median           & 56   & 63   & 89   & 62  \\
+25th Percentile  & 30   & 33   & 44   & 33  \\
+75th Percentile  & 114  & 129  & 185  & 128 \\
+Std.\ Deviation  & 128  & 137  & 170  & 139 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+
+\textbf{Length Distribution Patterns:}  
+Reviews exhibit substantial variation in length, averaging 610 characters (111 words) overall. The minimum review length is 3 characters, while the maximum reaches 8{,}995 characters. The interquartile range spans from 178 to 698 characters and from 33 to 128 words, reflecting wide diversity in user expression.
+
+\textbf{Variability Analysis:}  
+The high standard deviation of 767 characters indicates pronounced heterogeneity in review verbosity. The dataset includes extremely brief comments as well as extensive, essay-style critiques. This variability reflects diverse user writing styles and necessitates models capable of handling both concise expressions and long-form discourse.
+
+\textbf{Distribution Characteristics:}  
+The median review length (337 characters) is substantially lower than the mean (610 characters), indicating a right-skewed distribution. Approximately 50\% of reviews contain fewer than 62 words, while 25\% exceed 128 words, demonstrating the predominance of short-form feedback typical of online review platforms.
+
+\subsection{Representative Sample Analysis}
+
+To illustrate the distinct linguistic and stylistic patterns across sentiment categories, representative examples from each class are presented below with analytical commentary.
+
+\textbf{Sample Selection Methodology}
+
+Representative samples were selected through a systematic stratified random sampling approach:
+\begin{enumerate}
+    \item \textbf{Random sampling:} One hundred reviews were randomly selected from each category.
+    \item \textbf{Statistical filtering:} Outliers were excluded (reviews with fewer than 10 words or more than 300 words).
+    \item \textbf{Category-specific filtering (mixed reviews only):} Priority was given to samples containing contrast markers (e.g., ``but'', ``however'').
+    \item \textbf{Stratified selection by length:} Five samples per category were selected across the length spectrum (short, medium, long).
+\end{enumerate}
+
+This procedure ensures that selected samples are representative of both the statistical properties and linguistic diversity of each sentiment category.
+
+\textbf{Positive Review Samples}
+
+\begin{enumerate}
+    \item \textit{Short, enthusiastic (23 words, 121 characters):}  
+    \texttt{Enjoyed this game, pretty much it was the best game I ever played this year, however I hate it being an exclusive experience.}
+
+    \textit{Analysis:} Expresses strong positive sentiment using superlative language (``best game I ever played''), while briefly acknowledging a negative aspect (platform exclusivity).
+
+    \item \textit{Medium, detailed praise (64 words, 363 characters):}
+
+    \texttt{Mario Kart World marks the new beginning of the Mario Kart series, and thanks to the power of Switch 2, it does so in style. A quality open world, graphically very valid and with fun gameplay that never tires. The immense roster, also thanks to the alternative skins, and the tracks reworked to guarantee replayability, make it a must have for every Nintendo fan.}
+
+    \textit{Analysis:} Highlights multiple positive dimensions, including graphics, gameplay, and replayability, and targets a specific audience segment.
+
+    \item \textit{Long, nuanced appreciation (129 words, 694 characters):}
+
+    \texttt{The base game is good and for my first campaign it was played without any bugs. The plot is ok and forgettable with the cliché of our terrible politics. I miss the multiplayer game choice. My impression is that every faction is balanced in its own way. Why not a Hotseat mode or even online play? The 2D art is good, but the same cannot be said about the 3D graphics. I still remember the great animations in Brigandine: Legend of Forsena Grand Edition on the PlayStation 1. I hope more games like this come to new generations of consoles or PCs.}
+
+    \textit{Analysis:} Combines praise with constructive criticism and nostalgic references, typical of long-form positive reviews.
+
+    \item \textit{Very long, in-depth critique (252 words, 1{,}393 characters):}
+
+    \texttt{Dead Space 2, on the surface, appears to be more of the same. After the hard slog through Dead Space one, it seems the sequel would repeat the formula. But instead, Dead Space 2 features a number of sequences that emphasize intensity over repetition. Overall, the game is more intense and better paced than the original, with stronger storytelling and character development. While some design choices remain questionable, the game ultimately delivers a fulfilling experience.}
+
+    \textit{Analysis:} Provides a comprehensive evaluation with comparisons to earlier titles, addressing pacing, mechanics, and narrative depth.
+
+    \item \textit{Long, balanced with caveats (175 words, 1{,}016 characters):}
+
+    \texttt{As an original player of FFXIV 1.0, I went into ARR with low expectations. I was surprised by the sheer overhaul of the game. The environments, sound, and gameplay all improved significantly. That said, launch issues such as server congestion negatively impacted the experience. Once these problems were resolved, the game proved to be excellent overall.}
+
+    \textit{Analysis:} Demonstrates how positive reviews can include significant criticism while maintaining an overall favorable assessment.
+\end{enumerate}
+
+\textbf{Negative Review Samples}
+
+\begin{enumerate}
+    \item \textit{Short, direct criticism (18 words, 99 characters):}  
+    \texttt{The story is boring and online is disgusting. I think it has the most toxic community in video games.}
+
+    \textit{Analysis:} Uses strong negative language and direct condemnation, typical of brief negative reviews.
+
+    \item \textit{Medium, comparative disappointment (97 words, 545 characters):}
+
+    \texttt{I have been playing this since launch and can honestly say it is average. MKX was far more enjoyable. The story mode is exciting, but online play is poorly balanced and repetitive.}
+
+    \textit{Analysis:} Contrasts the title with previous entries, acknowledging minor strengths but emphasizing overall dissatisfaction.
+
+    \item \textit{Long, detailed critique (147 words, 770 characters):}
+
+    \texttt{The game is below average in nearly every aspect. While controls are functional and visuals are acceptable in places, the plot is dull and overstays its welcome. For such a weak narrative, the game length feels excessive.}
+
+    \textit{Analysis:} Enumerates multiple flaws with minimal praise, reinforcing the negative sentiment.
+
+    \item \textit{Very long, franchise critique (204 words, 1{,}085 characters):}
+
+    \texttt{This game abandons the survival horror roots of the franchise in favor of repetitive action mechanics. While some familiar characters return, the experience ultimately feels exhausting and unfocused.}
+
+    \textit{Analysis:} Critiques gameplay direction and narrative consistency, combining nostalgia with disappointment.
+
+    \item \textit{Extensive, technical and emotional critique (259 words, 1{,}391 characters):}
+
+    \texttt{FIFA 15 starts strong visually but deteriorates quickly due to technical glitches and gameplay imbalance. Online issues, repeated bugs, and perceived bias significantly diminish enjoyment, making this one of the weakest entries in the series.}
+
+    \textit{Analysis:} Combines technical complaints with emotional frustration, characteristic of long-form negative reviews.
+\end{enumerate}
+
+\textbf{Mixed Review Samples}
+
+\begin{enumerate}
+    \item \textit{Short, historical context (88 words, 451 characters):}
+
+    \texttt{It was one of the pioneers of RTS games and highly innovative in 1997. However, having played more modern titles first, I found it boring. Despite its historical importance, it did not fully resonate with me.}
+
+    \textit{Analysis:} Balances historical appreciation with personal disappointment, using contrastive language.
+
+    \item \textit{Medium, comparative evaluation (119 words, 677 characters):}
+
+    \texttt{Liberation HD is solid overall. The mechanics work well, and the protagonist is compelling. However, the game lacks some features expected from the franchise and feels shorter than ideal.}
+
+    \textit{Analysis:} Presents both strengths and limitations, concluding with a balanced assessment.
+
+    \item \textit{Long, detailed contrast (152 words, 813 characters):}
+
+    \texttt{The game excels in visuals and movement, but the narrative is bland and repetitive. While enjoyable at first, the experience gradually becomes tedious.}
+
+    \textit{Analysis:} Strongly contrasts positive mechanics with narrative weaknesses.
+
+    \item \textit{Very long, repetitive gameplay critique (181 words, 981 characters):}
+
+    \texttt{The gameplay loop is initially fun but quickly becomes repetitive. While the ending is satisfying, much of the experience feels unnecessarily prolonged.}
+
+    \textit{Analysis:} Uses multiple contrast markers to articulate both enjoyment and fatigue.
+
+    \item \textit{Extensive, balanced assessment (225 words, 1{,}199 characters):}
+
+    \texttt{The core gameplay mechanics are solid, but the game lacks innovation. Despite several strong elements, the overall experience fails to stand out, justifying a moderate score.}
+
+    \textit{Analysis:} Provides a reasoned justification for a middle-ground rating, characteristic of mixed sentiment reviews.
+\end{enumerate}
+
+
+\subsection{Linguistic Patterns and Vocabulary Analysis}
+
+A detailed vocabulary analysis across all 787{,}356 reviews reveals category-specific lexical preferences and semantic patterns characteristic of each sentiment class.
+
+\textbf{Positive Review Lexicon:}  
+Positive reviews are dominated by affirmative and superlative language, signaling strong endorsement:
+
+\begin{itemize}
+    \item \textit{Quality indicators:} ``great'' (187{,}887), ``best'' (153{,}162), ``amazing'' (85{,}815), ``good'' (180{,}543)
+    \item \textit{Enjoyment markers:} ``fun'' (149{,}527), ``really'' (147{,}832)
+    \item \textit{Narrative elements:} ``story'' (205{,}811), ``characters'' (80{,}988), ``world'' (87{,}121)
+    \item \textit{Technical aspects:} ``gameplay'' (117{,}404), ``graphics'' (94{,}971)
+\end{itemize}
+
+\textbf{Negative Review Lexicon:}  
+Negative reviews emphasize dissatisfaction, value concerns, and causal explanation:
+
+\begin{itemize}
+    \item \textit{Direct criticism:} ``bad'' (50{,}893), ``boring'', ``disappointing''
+    \item \textit{Economic concerns:} ``money'' (35{,}189)
+    \item \textit{Temporal qualifiers:} ``after'' (36{,}553), ``then'' (35{,}336)
+    \item \textit{Causality markers:} ``because'' (50{,}399)
+\end{itemize}
+
+\textbf{Mixed Review Lexicon:}  
+Mixed reviews display balanced sentiment vocabulary and comparative reasoning:
+
+\begin{itemize}
+    \item \textit{Balanced sentiment terms:} ``good'' (78{,}741), ``fun'' (55{,}594), ``great'' (40{,}152), ``bad'' (33{,}535)
+    \item \textit{Comparative language:} ``better'' (30{,}963), ``still'' (35{,}006)
+    \item \textit{Qualification markers:} ``really'' (61{,}603), ``way'' (29{,}626)
+\end{itemize}
+
+\textbf{Contrasting Discourse Patterns:}  
+Analysis of mixed reviews reveals sophisticated discourse structures:
+
+\begin{enumerate}
+    \item Co-occurrence of positive and negative sentiment markers within the same review.
+    \item Frequent use of contrastive conjunctions such as ``but'', ``however'', ``although'', and ``despite''.
+    \item Qualified sentiment intensity, often expressing overall approval tempered by acknowledged shortcomings.
+\end{enumerate}
+
+These findings demonstrate that mixed reviews represent genuinely nuanced opinions rather than neutral sentiment, characterized by explicit evaluation of both strengths and weaknesses.
+
+\subsection{Domain-Specific Characteristics}
+
+The gaming review dataset exhibits several domain-specific linguistic patterns:
+
+\textbf{Common evaluation dimensions:}  
+Users consistently assess gameplay mechanics, narrative quality, visual presentation, and entertainment value, reflecting the multidimensional nature of gaming experiences.
+
+\textbf{Comparative tendencies:}  
+Frequent references to other games indicate that evaluations are often contextual and comparative, complicating sentiment interpretation.
+
+\textbf{Temporal dynamic evaluations:}  
+Terms such as ``first'', ``still'', and ``after'' suggest longitudinal evaluations, capturing changes in perception over time due to gameplay depth, updates, or post-release support.

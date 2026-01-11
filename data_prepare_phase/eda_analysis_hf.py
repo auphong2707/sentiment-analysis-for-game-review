@@ -39,9 +39,17 @@ print("="*80)
 # 1. LOAD AND BASIC STATISTICS
 # ============================================================================
 print("\n[1/6] Loading dataset from HuggingFace...")
-ds = datasets.load_dataset("auphong2707/game-reviews-sentiment", split="train")
-df = pd.DataFrame(ds)
-print(f"✓ Loaded {len(df):,} reviews")
+# Load entire dataset (all splits)
+ds = datasets.load_dataset("auphong2707/game-reviews-sentiment")
+# Combine all splits (train, validation, test)
+all_splits = []
+for split_name in ds.keys():
+    split_df = pd.DataFrame(ds[split_name])
+    split_df['split'] = split_name  # Track which split each review came from
+    all_splits.append(split_df)
+    print(f"  - {split_name}: {len(split_df):,} reviews")
+df = pd.concat(all_splits, ignore_index=True)
+print(f"✓ Loaded {len(df):,} total reviews from all splits")
 print(f"✓ Columns: {list(df.columns)}")
 
 print("\n" + "="*80)
